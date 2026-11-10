@@ -1,0 +1,6 @@
+{
+  "name": "Admin Projects & Designer Allocation Manager",
+  "description": "Manage assigned Social Media and Branding projects for admins in a crisp vibrant light theme with designer allotments, client lifecycle movements, and device SIM allocations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
