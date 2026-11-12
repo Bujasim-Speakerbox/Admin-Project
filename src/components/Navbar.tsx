@@ -14,7 +14,8 @@ import {
   Eye,
   TrendingUp,
   UserCheck,
-  Smartphone
+  Smartphone,
+  KeyRound
 } from 'lucide-react';
 import { ActiveTab } from '../types';
 
@@ -31,6 +32,7 @@ interface NavbarProps {
   onOpenAddClient?: () => void;
   onOpenAddDevice?: () => void;
   onResetData: () => void;
+  onOpenChangePassword?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -46,6 +48,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenAddClient,
   onOpenAddDevice,
   onResetData,
+  onOpenChangePassword,
 }) => {
   return (
     <header id="main-navbar" className="bg-white/95 backdrop-blur-md border-b border-zinc-200 sticky top-0 z-30 shadow-xs">
@@ -152,8 +155,29 @@ export const Navbar: React.FC<NavbarProps> = ({
                         <span>Allocate Device</span>
                       </button>
                     )}
+                    {onOpenChangePassword && (
+                      <button
+                        id="change-password-dropdown-option"
+                        onClick={onOpenChangePassword}
+                        className="w-full px-4 py-2 text-left text-sm font-semibold text-zinc-800 hover:bg-orange-50 hover:text-orange-700 flex items-center gap-2 border-t border-zinc-100 transition-colors"
+                      >
+                        <KeyRound className="w-4 h-4 text-orange-600" />
+                        <span>Change Passcode</span>
+                      </button>
+                    )}
                   </div>
                 </div>
+                {onOpenChangePassword && (
+                  <button
+                    id="change-password-nav-btn"
+                    onClick={onOpenChangePassword}
+                    title="Change Admin Passcode"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-zinc-700 hover:text-black bg-zinc-100 hover:bg-zinc-200 rounded-xl transition-colors cursor-pointer border border-zinc-200"
+                  >
+                    <KeyRound className="w-3.5 h-3.5 text-orange-600" />
+                    <span className="hidden sm:inline">Passcode</span>
+                  </button>
+                )}
                 <button
                   id="reset-initial-data-btn"
                   onClick={onResetData}
@@ -223,6 +247,17 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <TrendingUp className="w-4 h-4" />
             <span>Client Movement (Onboarded & Exit)</span>
+            {!isAdminLoggedIn ? (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-pink-50 text-pink-700 border border-pink-200">
+                <Lock className="w-2.5 h-2.5" />
+                Locked
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <Unlock className="w-2.5 h-2.5" />
+                Unlocked
+              </span>
+            )}
           </button>
           <button
             id="tab-devices"
@@ -235,6 +270,17 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <Smartphone className="w-4 h-4" />
             <span>Device Allocation</span>
+            {!isAdminLoggedIn ? (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-pink-50 text-pink-700 border border-pink-200">
+                <Lock className="w-2.5 h-2.5" />
+                Locked
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <Unlock className="w-2.5 h-2.5" />
+                Unlocked
+              </span>
+            )}
           </button>
         </div>
       </div>

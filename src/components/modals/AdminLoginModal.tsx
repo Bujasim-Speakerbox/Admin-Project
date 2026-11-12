@@ -1,36 +1,41 @@
 import React, { useState } from 'react';
-import { Lock, X, KeyRound, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Lock, X, KeyRound, AlertCircle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 
 interface AdminLoginModalProps {
   isOpen: boolean;
   onClose: () => void;
   onLoginSuccess: () => void;
+  currentPassword?: string;
+  onOpenChangePassword?: () => void;
 }
 
 export function AdminLoginModal({
   isOpen,
   onClose,
   onLoginSuccess,
+  currentPassword = '12345',
+  onOpenChangePassword,
 }: AdminLoginModalProps) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [showPass, setShowPass] = useState(false);
 
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === '12345') {
+    if (password === currentPassword) {
       setError('');
       setPassword('');
       onLoginSuccess();
       onClose();
     } else {
-      setError('Incorrect admin password. (Password: 12345)');
+      setError(`Incorrect admin passcode.`);
     }
   };
 
   const handleFillDemoPass = () => {
-    setPassword('12345');
+    setPassword(currentPassword);
     setError('');
   };
 
@@ -45,7 +50,7 @@ export function AdminLoginModal({
             </div>
             <div>
               <h3 className="text-base font-bold text-black">Admin Authentication</h3>
-              <p className="text-[11px] text-zinc-500">Unlock Add, Edit, & Delete permissions</p>
+              <p className="text-[11px] text-zinc-500">Unlock protected sections & actions</p>
             </div>
           </div>
           <button
@@ -61,23 +66,32 @@ export function AdminLoginModal({
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
             <label className="block text-xs font-bold text-black uppercase tracking-wider mb-1.5 flex items-center justify-between">
-              <span>Admin Password</span>
-              <span className="text-[10px] text-orange-600 font-bold">Default: 12345</span>
+              <span>Admin Passcode</span>
+              {currentPassword === '12345' && (
+                <span className="text-[10px] text-orange-600 font-bold">Default: 12345</span>
+              )}
             </label>
             <div className="relative">
               <input
                 id="admin-password-input"
-                type="password"
+                type={showPass ? 'text' : 'password'}
                 autoFocus
                 value={password}
                 onChange={(e) => {
                   setPassword(e.target.value);
                   setError('');
                 }}
-                placeholder="Enter admin password..."
-                className="w-full pl-9 pr-3 py-2.5 text-sm bg-white border border-zinc-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 text-black placeholder-zinc-400 font-semibold"
+                placeholder="Enter admin passcode..."
+                className="w-full pl-9 pr-9 py-2.5 text-sm bg-white border border-zinc-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 text-black placeholder-zinc-400 font-semibold"
               />
               <KeyRound className="w-4 h-4 text-zinc-400 absolute left-3 top-3" />
+              <button
+                type="button"
+                onClick={() => setShowPass(!showPass)}
+                className="absolute right-3 top-3 text-zinc-400 hover:text-black cursor-pointer"
+              >
+                {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
           </div>
 
@@ -89,15 +103,31 @@ export function AdminLoginModal({
           )}
 
           <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-3 text-xs text-zinc-600 flex items-center justify-between">
-            <span className="font-medium text-zinc-600">Quick fill password:</span>
+            <span className="font-medium text-zinc-600">Quick fill passcode:</span>
             <button
               type="button"
               onClick={handleFillDemoPass}
               className="px-2.5 py-1 rounded bg-orange-100 hover:bg-orange-200 border border-orange-200 text-orange-800 font-bold text-[11px] transition-colors cursor-pointer"
             >
-              Use 12345
+              {currentPassword === '12345' ? 'Use 12345' : 'Fill Current'}
             </button>
           </div>
+
+          {onOpenChangePassword && (
+            <div className="text-center pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenChangePassword();
+                }}
+                className="text-xs text-orange-600 hover:text-orange-700 font-bold hover:underline cursor-pointer inline-flex items-center gap-1"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                <span>Change Admin Passcode</span>
+              </button>
+            </div>
+          )}
 
           <div className="pt-2 flex items-center justify-end space-x-2 border-t border-zinc-200">
             <button

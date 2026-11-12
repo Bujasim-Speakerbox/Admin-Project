@@ -397,7 +397,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                               <div className="flex items-center gap-2">
                                 <span className="truncate text-sm font-bold text-black">{project.name}</span>
                                 {project.projectType === 'branding' && (
-                                  <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-pink-50 text-pink-700 border border-pink-200 shrink-0">
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-pink-50 text-pink-700 border border-pink-200 shrink-0">
                                     Branding
                                   </span>
                                 )}

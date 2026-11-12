@@ -12,7 +12,9 @@ import { DesignerModal } from './components/modals/DesignerModal';
 import { ClientMovementModal } from './components/modals/ClientMovementModal';
 import { DeviceModal } from './components/modals/DeviceModal';
 import { AdminLoginModal } from './components/modals/AdminLoginModal';
+import { ChangePasswordModal } from './components/modals/ChangePasswordModal';
 import { ConfirmDeleteModal } from './components/modals/ConfirmDeleteModal';
+import { SectionLockScreen } from './components/SectionLockScreen';
 import { AdminDesignerAllotment } from './components/AdminDesignerAllotment';
 import { ActiveTab, Admin, Project, ProjectStatus, Designer, ProjectType, ClientMovement, ClientMovementType, DeviceAllocation } from './types';
 import { INITIAL_ADMINS, INITIAL_PROJECTS, INITIAL_DESIGNERS, INITIAL_CLIENT_MOVEMENTS, INITIAL_DEVICES } from './data/initialData';
@@ -25,6 +27,7 @@ const STORAGE_KEYS = {
   MOVEMENTS: 'admin_portal_movements_v1',
   DEVICES: 'admin_portal_devices_v1',
   AUTH: 'admin_portal_auth_v1',
+  PASSWORD: 'admin_portal_password_v1',
 };
 
 export default function App() {
@@ -33,12 +36,21 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [adminViewMode, setAdminViewMode] = useState<'kanban' | 'stack'>('kanban');
 
-  // Authentication State
+  // Authentication & Passcode State
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(() => {
     return localStorage.getItem(STORAGE_KEYS.AUTH) === 'true';
   });
+  const [adminPassword, setAdminPassword] = useState<string>(() => {
+    return localStorage.getItem(STORAGE_KEYS.PASSWORD) || '12345';
+  });
   const [isAdminLoginModalOpen, setIsAdminLoginModalOpen] = useState(false);
+  const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false);
   const [pendingAuthAction, setPendingAuthAction] = useState<(() => void) | null>(null);
+
+  const handleChangePassword = (newPass: string) => {
+    setAdminPassword(newPass);
+    localStorage.setItem(STORAGE_KEYS.PASSWORD, newPass);
+  };
 
   // Core Data States with localStorage persistence
   const [admins, setAdmins] = useState<Admin[]>(() => {
@@ -510,6 +522,7 @@ export default function App() {
         onOpenAddClient={() => handleOpenAddClient()}
         onOpenAddDevice={() => handleOpenAddDevice()}
         onResetData={handleResetToInitialData}
+        onOpenChangePassword={() => setIsChangePasswordModalOpen(true)}
       />
 
       {/* Main Container */}
@@ -716,29 +729,49 @@ export default function App() {
 
         {/* Tab 3: Client Movement (Onboarded & Exit Clients) */}
         {activeTab === 'clients' && (
-          <ClientMovementView
-            movements={movements}
-            admins={admins}
-            projects={projects}
-            isAdminLoggedIn={isAdminLoggedIn}
-            onOpenAddClient={handleOpenAddClient}
-            onEditClient={handleEditClient}
-            onDeleteClient={handleDeleteClient}
-            onRequireAdminAuth={requireAdminAuth}
-          />
+          !isAdminLoggedIn ? (
+            <SectionLockScreen
+              sectionTitle="Client Movement (Onboard & Exit)"
+              sectionDescription="This section contains sensitive client onboarding classifications and exit reasons. Enter the admin passcode to unlock and view records."
+              currentPassword={adminPassword}
+              onUnlockSuccess={handleLoginSuccess}
+              onOpenChangePassword={() => setIsChangePasswordModalOpen(true)}
+            />
+          ) : (
+            <ClientMovementView
+              movements={movements}
+              admins={admins}
+              projects={projects}
+              isAdminLoggedIn={isAdminLoggedIn}
+              onOpenAddClient={handleOpenAddClient}
+              onEditClient={handleEditClient}
+              onDeleteClient={handleDeleteClient}
+              onRequireAdminAuth={requireAdminAuth}
+            />
+          )
         )}
 
         {/* Tab 4: Device Allocation for Admins */}
         {activeTab === 'devices' && (
-          <DeviceAllocationView
-            devices={devices}
-            admins={admins}
-            isAdminLoggedIn={isAdminLoggedIn}
-            onOpenAddDevice={handleOpenAddDevice}
-            onEditDevice={handleEditDevice}
-            onDeleteDevice={handleDeleteDevice}
-            onRequireAdminAuth={requireAdminAuth}
-          />
+          !isAdminLoggedIn ? (
+            <SectionLockScreen
+              sectionTitle="Device & SIM Allocation"
+              sectionDescription="This section contains sensitive admin device hardware, IMEI numbers, and company SIM lines. Enter the admin passcode to unlock and view allocations."
+              currentPassword={adminPassword}
+              onUnlockSuccess={handleLoginSuccess}
+              onOpenChangePassword={() => setIsChangePasswordModalOpen(true)}
+            />
+          ) : (
+            <DeviceAllocationView
+              devices={devices}
+              admins={admins}
+              isAdminLoggedIn={isAdminLoggedIn}
+              onOpenAddDevice={handleOpenAddDevice}
+              onEditDevice={handleEditDevice}
+              onDeleteDevice={handleDeleteDevice}
+              onRequireAdminAuth={requireAdminAuth}
+            />
+          )
         )}
       </main>
 
@@ -793,6 +826,15 @@ export default function App() {
         isOpen={isAdminLoginModalOpen}
         onClose={() => setIsAdminLoginModalOpen(false)}
         onLoginSuccess={handleLoginSuccess}
+        currentPassword={adminPassword}
+        onOpenChangePassword={() => setIsChangePasswordModalOpen(true)}
+      />
+
+      <ChangePasswordModal
+        isOpen={isChangePasswordModalOpen}
+        onClose={() => setIsChangePasswordModalOpen(false)}
+        currentPassword={adminPassword}
+        onChangePassword={handleChangePassword}
       />
 
       <ConfirmDeleteModal
