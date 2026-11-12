@@ -44,13 +44,16 @@ export const AdminCard: React.FC<AdminCardProps> = ({
   };
 
   const formatProjectDates = (project: Project) => {
+    if (project.billingCycle) {
+      return project.billingCycle;
+    }
     const start = formatDateBadge(project.startDate || project.createdAt);
     const end = formatDateBadge(project.endDate || project.dueDate);
 
     if (start && end) {
       return `${start} - ${end}`;
     }
-    return start || end || 'Jul 28';
+    return start || end || '1 to 30 or 31';
   };
 
   // Status Badge Helper for Light Theme

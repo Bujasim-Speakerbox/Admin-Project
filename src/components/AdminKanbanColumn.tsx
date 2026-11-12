@@ -49,13 +49,16 @@ export const AdminKanbanColumn: React.FC<AdminKanbanColumnProps> = ({
   };
 
   const formatProjectDates = (project: Project) => {
+    if (project.billingCycle) {
+      return project.billingCycle;
+    }
     const start = formatDateBadge(project.startDate || project.createdAt);
     const end = formatDateBadge(project.endDate || project.dueDate);
 
     if (start && end) {
       return `${start} - ${end}`;
     }
-    return start || end || 'Jul 30';
+    return start || end || '1 to 30 or 31';
   };
 
   // Status color helper for date badge

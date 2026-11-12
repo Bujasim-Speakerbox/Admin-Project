@@ -38,6 +38,7 @@ export default function App() {
     return localStorage.getItem(STORAGE_KEYS.AUTH) === 'true';
   });
   const [isAdminLoginModalOpen, setIsAdminLoginModalOpen] = useState(false);
+  const [pendingAuthAction, setPendingAuthAction] = useState<(() => void) | null>(null);
 
   // Core Data States with localStorage persistence
   const [admins, setAdmins] = useState<Admin[]>(() => {
@@ -53,16 +54,24 @@ export default function App() {
     if (saved) {
       try {
         const parsed: Project[] = JSON.parse(saved);
-        const initialized = parsed.map((p) => ({
-          ...p,
-          projectType: p.projectType || 'social_media',
-        }));
-        const hasBranding = initialized.some((p) => p.projectType === 'branding');
-        if (!hasBranding) {
-          const initialBranding = INITIAL_PROJECTS.filter((p) => p.projectType === 'branding');
-          return [...initialized, ...initialBranding];
-        }
-        return initialized;
+        return parsed.map((p) => {
+          let cycle = p.billingCycle;
+          if (!cycle) {
+            const dateStr = p.startDate || p.createdAt || '';
+            const day = dateStr ? parseInt(dateStr.split('-')[2] || '1', 10) : 1;
+            if (day <= 3 || day >= 28) cycle = '1 to 30 or 31';
+            else if (day <= 7) cycle = '5 to 5';
+            else if (day <= 12) cycle = '10 to 10';
+            else if (day <= 17) cycle = '15 to 15';
+            else if (day <= 22) cycle = '20 to 20';
+            else cycle = '25 to 25';
+          }
+          return {
+            ...p,
+            projectType: p.projectType || 'social_media',
+            billingCycle: cycle,
+          };
+        });
       } catch (e) {
         console.error(e);
       }
@@ -119,19 +128,26 @@ export default function App() {
     localStorage.setItem(STORAGE_KEYS.AUTH, isAdminLoggedIn ? 'true' : 'false');
   }, [isAdminLoggedIn]);
 
-  // Auth Handler helpers
+  // Auth Handler helpers with pending action execution
   const handleLoginSuccess = () => {
     setIsAdminLoggedIn(true);
+    if (pendingAuthAction) {
+      const action = pendingAuthAction;
+      setPendingAuthAction(null);
+      action();
+    }
   };
 
   const handleLogout = () => {
     setIsAdminLoggedIn(false);
+    setPendingAuthAction(null);
   };
 
   const requireAdminAuth = (action: () => void) => {
     if (isAdminLoggedIn) {
       action();
     } else {
+      setPendingAuthAction(() => action);
       setIsAdminLoginModalOpen(true);
     }
   };
@@ -263,9 +279,20 @@ export default function App() {
       setDeleteModalConfig({
         isOpen: true,
         title: `Delete Project "${project.name}"?`,
-        description: `Are you sure you want to delete the project "${project.name}"? This action cannot be undone.`,
+        description: `Are you sure you want to delete the project "${project.name}"? This will permanently remove the project from both "Admins & Assignments" and the "All Projects Directory".`,
         onConfirm: () => {
-          setProjects((prev) => prev.filter((p) => p.id !== projectId));
+          // Remove from projects list (shared across Admins board and All Projects Directory)
+          setProjects((prev) => {
+            const updated = prev.filter((p) => p.id !== projectId);
+            localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(updated));
+            return updated;
+          });
+          // Also remove any linked movement records
+          setMovements((prev) => {
+            const updated = prev.filter((m) => m.projectId !== projectId);
+            localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(updated));
+            return updated;
+          });
         },
       });
     });

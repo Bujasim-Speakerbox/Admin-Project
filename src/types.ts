@@ -1,6 +1,13 @@
 export type ProjectStatus = 'Active' | 'In Progress' | 'On Hold' | 'Completed';
 export type ProjectPriority = 'High' | 'Medium' | 'Low';
 export type ProjectType = 'social_media' | 'branding';
+export type BillingCycle = 
+  | '1 to 30 or 31'
+  | '5 to 5'
+  | '10 to 10'
+  | '15 to 15'
+  | '20 to 20'
+  | '25 to 25';
 
 export interface Project {
   id: string;
@@ -12,6 +19,7 @@ export interface Project {
   description?: string;
   category?: string;
   projectType?: ProjectType; // 'social_media' or 'branding'
+  billingCycle?: BillingCycle; // 1 to 30 or 31, 5 to 5, 10 to 10, 15 to 15, 20 to 20, 25 to 25
   startDate?: string;
   endDate?: string;
   dueDate?: string;

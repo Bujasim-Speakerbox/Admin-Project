@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, FolderPlus, Save } from 'lucide-react';
-import { Admin, Project, ProjectPriority, ProjectStatus, ProjectType } from '../../types';
+import { X, FolderPlus, Save, Calendar } from 'lucide-react';
+import { Admin, Project, ProjectPriority, ProjectStatus, ProjectType, BillingCycle } from '../../types';
 
 interface ProjectModalProps {
   isOpen: boolean;
@@ -11,6 +11,15 @@ interface ProjectModalProps {
   defaultAdminId?: string;
   defaultProjectType?: ProjectType;
 }
+
+export const BILLING_CYCLES: BillingCycle[] = [
+  '1 to 30 or 31',
+  '5 to 5',
+  '10 to 10',
+  '15 to 15',
+  '20 to 20',
+  '25 to 25',
+];
 
 export const ProjectModal: React.FC<ProjectModalProps> = ({
   isOpen,
@@ -27,6 +36,7 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
   const [priority, setPriority] = useState<ProjectPriority>('Medium');
   const [category, setCategory] = useState('');
   const [projectType, setProjectType] = useState<ProjectType>('social_media');
+  const [billingCycle, setBillingCycle] = useState<BillingCycle>('1 to 30 or 31');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
@@ -38,6 +48,7 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
       setPriority(initialProject.priority);
       setCategory(initialProject.category || '');
       setProjectType(initialProject.projectType || 'social_media');
+      setBillingCycle(initialProject.billingCycle || '1 to 30 or 31');
       setStartDate(initialProject.startDate || initialProject.createdAt || '');
       setEndDate(initialProject.endDate || initialProject.dueDate || '');
     } else {
@@ -48,12 +59,33 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
       setPriority('Medium');
       setCategory('');
       setProjectType(defaultProjectType);
+      setBillingCycle('1 to 30 or 31');
       setStartDate(today);
       setEndDate('');
     }
   }, [initialProject, defaultAdminId, defaultProjectType, admins, isOpen]);
 
   if (!isOpen) return null;
+
+  const handleCycleChange = (cycle: BillingCycle) => {
+    setBillingCycle(cycle);
+    // Optionally update start/end day of month based on selected cycle
+    const yearMonth = (startDate || new Date().toISOString().split('T')[0]).substring(0, 7);
+    if (cycle === '1 to 30 or 31') {
+      setStartDate(`${yearMonth}-01`);
+      setEndDate(`${yearMonth}-31`);
+    } else if (cycle === '5 to 5') {
+      setStartDate(`${yearMonth}-05`);
+    } else if (cycle === '10 to 10') {
+      setStartDate(`${yearMonth}-10`);
+    } else if (cycle === '15 to 15') {
+      setStartDate(`${yearMonth}-15`);
+    } else if (cycle === '20 to 20') {
+      setStartDate(`${yearMonth}-20`);
+    } else if (cycle === '25 to 25') {
+      setStartDate(`${yearMonth}-25`);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,6 +99,7 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
       priority,
       category: category.trim() || (projectType === 'branding' ? 'Branding' : 'Social Media'),
       projectType,
+      billingCycle,
       startDate: startDate || undefined,
       endDate: endDate || undefined,
     });
@@ -107,24 +140,47 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-black uppercase tracking-wider mb-1">
-              Project Type *
-            </label>
-            <select
-              id="project-type-select"
-              required
-              value={projectType}
-              onChange={(e) => setProjectType(e.target.value as ProjectType)}
-              className="w-full px-3 py-2 text-sm bg-white border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-black font-semibold cursor-pointer"
-            >
-              <option value="social_media" className="bg-white text-black">
-                Social Media Project
-              </option>
-              <option value="branding" className="bg-white text-black">
-                Branding / One-time Project
-              </option>
-            </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-black uppercase tracking-wider mb-1">
+                Project Type *
+              </label>
+              <select
+                id="project-type-select"
+                required
+                value={projectType}
+                onChange={(e) => setProjectType(e.target.value as ProjectType)}
+                className="w-full px-3 py-2 text-sm bg-white border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-black font-semibold cursor-pointer"
+              >
+                <option value="social_media" className="bg-white text-black">
+                  Social Media
+                </option>
+                <option value="branding" className="bg-white text-black">
+                  Branding / One-time
+                </option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-black uppercase tracking-wider mb-1 flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-orange-600" />
+                <span>Billing Cycle *</span>
+              </label>
+              <select
+                id="project-billing-cycle-select"
+                required
+                value={billingCycle}
+                onChange={(e) => handleCycleChange(e.target.value as BillingCycle)}
+                className="w-full px-3 py-2 text-sm bg-white border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-black font-bold cursor-pointer"
+              >
+                <option value="1 to 30 or 31">1 to 30 or 31</option>
+                <option value="5 to 5">5 to 5</option>
+                <option value="10 to 10">10 to 10</option>
+                <option value="15 to 15">15 to 15</option>
+                <option value="20 to 20">20 to 20</option>
+                <option value="25 to 25">25 to 25</option>
+              </select>
+            </div>
           </div>
 
           <div>
