@@ -6,6 +6,7 @@ import { AdminKanbanBoard } from './components/AdminKanbanBoard';
 import { ProjectsView } from './components/ProjectsView';
 import { ClientMovementView } from './components/ClientMovementView';
 import { DeviceAllocationView } from './components/DeviceAllocationView';
+import { GoogleSheetsView } from './components/GoogleSheetsView';
 import { AdminModal } from './components/modals/AdminModal';
 import { ProjectModal } from './components/modals/ProjectModal';
 import { DesignerModal } from './components/modals/DesignerModal';
@@ -772,6 +773,16 @@ export default function App() {
               onRequireAdminAuth={requireAdminAuth}
             />
           )
+        )}
+
+        {/* Tab 5: Google Sheets Collector & Sync */}
+        {activeTab === 'sheets' && (
+          <GoogleSheetsView
+            admins={admins}
+            projects={projects}
+            movements={movements}
+            devices={devices}
+          />
         )}
       </main>
 

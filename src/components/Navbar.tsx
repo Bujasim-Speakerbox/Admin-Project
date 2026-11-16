@@ -15,7 +15,8 @@ import {
   TrendingUp,
   UserCheck,
   Smartphone,
-  KeyRound
+  KeyRound,
+  FileSpreadsheet
 } from 'lucide-react';
 import { ActiveTab } from '../types';
 
@@ -281,6 +282,18 @@ export const Navbar: React.FC<NavbarProps> = ({
                 Unlocked
               </span>
             )}
+          </button>
+          <button
+            id="tab-sheets"
+            onClick={() => setActiveTab('sheets')}
+            className={`pb-3 text-sm flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap ${
+              activeTab === 'sheets'
+                ? 'border-b-2 border-emerald-600 text-emerald-700 font-bold'
+                : 'border-transparent text-zinc-600 hover:text-black hover:border-zinc-300 font-semibold'
+            }`}
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+            <span>Google Sheets</span>
           </button>
         </div>
       </div>
