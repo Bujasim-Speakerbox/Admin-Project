@@ -1,0 +1,593 @@
+{
+  "entities": {
+    "Workspace": {
+      "title": "Workspace",
+      "description": "Shared multi-device workspace root holding ownership and authorized member email list.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "Display name of the shared workspace."
+        },
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the workspace creator/owner."
+        },
+        "ownerEmail": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 160,
+          "description": "Verified email address of the workspace owner."
+        },
+        "memberEmails": {
+          "type": "array",
+          "description": "Bounded list (max 20) of authorized Google account emails allowed to read and edit this workspace."
+        },
+        "seeded": {
+          "type": "boolean",
+          "description": "Whether initial seed data has been populated."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the workspace was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the last update."
+        }
+      },
+      "required": [
+        "name",
+        "ownerUid",
+        "ownerEmail",
+        "memberEmails",
+        "seeded",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "WorkspaceSecurity": {
+      "title": "WorkspaceSecurity",
+      "description": "Isolated security configuration storing the admin passcode for locked sections.",
+      "type": "object",
+      "properties": {
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "passcode": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 64,
+          "description": "Admin passcode protecting Client Movement and Device Allocation views."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "ownerUid",
+        "passcode",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "Admin team member managing assigned social media and branding projects.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "memberEmails": {
+          "type": "array",
+          "description": "Bounded list (max 20) of authorized member emails."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "department": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "avatarUrl": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "color": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 20,
+          "pattern": "^#[0-9a-fA-F]{3,8}$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "workspaceId",
+        "ownerUid",
+        "memberEmails",
+        "name",
+        "email",
+        "department",
+        "color",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Social media or Branding / One-time project assigned to an Admin.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "memberEmails": {
+          "type": "array"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 150
+        },
+        "adminId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "designerId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Active", "In Progress", "On Hold", "Completed"]
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["High", "Medium", "Low"]
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "projectType": {
+          "type": "string",
+          "enum": ["social_media", "branding"]
+        },
+        "billingCycle": {
+          "type": "string",
+          "enum": [
+            "1 to 30 or 31",
+            "5 to 5",
+            "10 to 10",
+            "15 to 15",
+            "20 to 20",
+            "25 to 25"
+          ]
+        },
+        "startDate": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "endDate": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "dueDate": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "createdDateStr": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "workspaceId",
+        "ownerUid",
+        "memberEmails",
+        "name",
+        "adminId",
+        "status",
+        "priority",
+        "projectType",
+        "billingCycle",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Designer": {
+      "title": "Designer",
+      "description": "Designer allocated to one or more Admins.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "memberEmails": {
+          "type": "array"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "email": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "avatarUrl": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "allocatedAdminIds": {
+          "type": "array"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Available", "Busy", "On Leave"]
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "workspaceId",
+        "ownerUid",
+        "memberEmails",
+        "name",
+        "email",
+        "role",
+        "allocatedAdminIds",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ClientMovement": {
+      "title": "ClientMovement",
+      "description": "Month-wise client onboarded or exit log entry.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "memberEmails": {
+          "type": "array"
+        },
+        "clientType": {
+          "type": "string",
+          "enum": ["onboarded", "exit"]
+        },
+        "projectName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 150
+        },
+        "projectId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "adminId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "month": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 10
+        },
+        "date": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 32
+        },
+        "brandType": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "projectType": {
+          "type": "string",
+          "enum": ["social_media", "branding"]
+        },
+        "exitReason": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "workspaceId",
+        "ownerUid",
+        "memberEmails",
+        "clientType",
+        "projectName",
+        "month",
+        "date",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "DeviceAllocation": {
+      "title": "DeviceAllocation",
+      "description": "Company device and SIM line allocated to an Admin.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "memberEmails": {
+          "type": "array"
+        },
+        "adminId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "adminName": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "deviceName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 150
+        },
+        "simNumber": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "deviceType": {
+          "type": "string",
+          "enum": ["smartphone", "laptop", "tablet", "hotspot", "other"]
+        },
+        "carrier": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "imeiOrSerial": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Active", "Spare", "In Repair", "Returned"]
+        },
+        "allocatedDate": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 32
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "workspaceId",
+        "ownerUid",
+        "memberEmails",
+        "adminId",
+        "deviceName",
+        "simNumber",
+        "status",
+        "allocatedDate",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/workspaces/{workspaceId}": {
+      "schema": {
+        "$ref": "#/entities/Workspace"
+      },
+      "description": "Shared workspace root containing owner identity and authorized member emails."
+    },
+    "/workspaces/{workspaceId}/security/{securityId}": {
+      "schema": {
+        "$ref": "#/entities/WorkspaceSecurity"
+      },
+      "description": "Workspace admin passcode configuration isolated from general collections."
+    },
+    "/workspaces/{workspaceId}/admins/{adminId}": {
+      "schema": {
+        "$ref": "#/entities/Admin"
+      },
+      "description": "Admins assigned projects in this workspace."
+    },
+    "/workspaces/{workspaceId}/projects/{projectId}": {
+      "schema": {
+        "$ref": "#/entities/Project"
+      },
+      "description": "Social media and branding projects in this workspace."
+    },
+    "/workspaces/{workspaceId}/designers/{designerId}": {
+      "schema": {
+        "$ref": "#/entities/Designer"
+      },
+      "description": "Designers allocated to admins in this workspace."
+    },
+    "/workspaces/{workspaceId}/movements/{movementId}": {
+      "schema": {
+        "$ref": "#/entities/ClientMovement"
+      },
+      "description": "Client onboarded and exit logs in this workspace."
+    },
+    "/workspaces/{workspaceId}/devices/{deviceId}": {
+      "schema": {
+        "$ref": "#/entities/DeviceAllocation"
+      },
+      "description": "Company devices and SIM lines allocated to admins in this workspace."
+    }
+  }
+}

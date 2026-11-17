@@ -1,4 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
+import { auth, googleProvider } from './firebase';
+import {
+  BOOTSTRAP_ADMIN_EMAIL,
+  WorkspaceMetadata,
+  checkAndInitializeWorkspace,
+  subscribeToWorkspace,
+  saveAdminToCloud,
+  deleteAdminAndProjectsFromCloud,
+  saveProjectToCloud,
+  updateProjectStatusInCloud,
+  deleteProjectAndMovementsFromCloud,
+  saveDesignerToCloud,
+  deleteDesignerFromCloud,
+  saveMovementToCloud,
+  deleteMovementFromCloud,
+  saveDeviceToCloud,
+  deleteDeviceFromCloud,
+  updatePasscodeInCloud,
+  updateWorkspaceMemberEmailsInCloud,
+  resetCloudWorkspaceToSeed,
+} from './services/firestoreSync';
 import { Navbar } from './components/Navbar';
 import { StatsBar } from './components/StatsBar';
 import { AdminCard } from './components/AdminCard';
@@ -6,7 +28,6 @@ import { AdminKanbanBoard } from './components/AdminKanbanBoard';
 import { ProjectsView } from './components/ProjectsView';
 import { ClientMovementView } from './components/ClientMovementView';
 import { DeviceAllocationView } from './components/DeviceAllocationView';
-import { GoogleSheetsView } from './components/GoogleSheetsView';
 import { AdminModal } from './components/modals/AdminModal';
 import { ProjectModal } from './components/modals/ProjectModal';
 import { DesignerModal } from './components/modals/DesignerModal';
@@ -15,11 +36,12 @@ import { DeviceModal } from './components/modals/DeviceModal';
 import { AdminLoginModal } from './components/modals/AdminLoginModal';
 import { ChangePasswordModal } from './components/modals/ChangePasswordModal';
 import { ConfirmDeleteModal } from './components/modals/ConfirmDeleteModal';
+import { TeamCloudModal } from './components/modals/TeamCloudModal';
 import { SectionLockScreen } from './components/SectionLockScreen';
 import { AdminDesignerAllotment } from './components/AdminDesignerAllotment';
 import { ActiveTab, Admin, Project, ProjectStatus, Designer, ProjectType, ClientMovement, ClientMovementType, DeviceAllocation } from './types';
 import { INITIAL_ADMINS, INITIAL_PROJECTS, INITIAL_DESIGNERS, INITIAL_CLIENT_MOVEMENTS, INITIAL_DEVICES } from './data/initialData';
-import { FolderKanban, UserPlus, Columns, Rows } from 'lucide-react';
+import { FolderKanban, UserPlus, Columns, Rows, Cloud, AlertCircle, X, Share2 } from 'lucide-react';
 
 const STORAGE_KEYS = {
   ADMINS: 'admin_portal_admins_v1',
@@ -48,9 +70,21 @@ export default function App() {
   const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false);
   const [pendingAuthAction, setPendingAuthAction] = useState<(() => void) | null>(null);
 
+  // Firebase Cloud Auth & Sync State
+  const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [cloudStatus, setCloudStatus] = useState<'local' | 'connecting' | 'synced' | 'unauthorized'>('local');
+  const [workspaceMeta, setWorkspaceMeta] = useState<WorkspaceMetadata | null>(null);
+  const [isTeamCloudModalOpen, setIsTeamCloudModalOpen] = useState(false);
+  const [isCloudBannerDismissed, setIsCloudBannerDismissed] = useState(false);
+  const [cloudError, setCloudError] = useState<string | null>(null);
+
   const handleChangePassword = (newPass: string) => {
     setAdminPassword(newPass);
     localStorage.setItem(STORAGE_KEYS.PASSWORD, newPass);
+    if (cloudStatus === 'synced') {
+      void updatePasscodeInCloud(newPass);
+    }
   };
 
   // Core Data States with localStorage persistence
@@ -141,6 +175,118 @@ export default function App() {
     localStorage.setItem(STORAGE_KEYS.AUTH, isAdminLoggedIn ? 'true' : 'false');
   }, [isAdminLoggedIn]);
 
+  // Keep a ref to current data so first-time Firebase initialization seeds current state
+  const latestSeedRef = useRef({
+    admins,
+    projects,
+    designers,
+    movements,
+    devices,
+    passcode: adminPassword,
+  });
+  latestSeedRef.current = {
+    admins,
+    projects,
+    designers,
+    movements,
+    devices,
+    passcode: adminPassword,
+  };
+
+  // Firebase Auth & Real-time Firestore Workspace Sync
+  useEffect(() => {
+    let unsubWorkspace: (() => void) | null = null;
+    let isDisposed = false;
+
+    const unsubAuth = onAuthStateChanged(auth, async (user) => {
+      if (unsubWorkspace) {
+        unsubWorkspace();
+        unsubWorkspace = null;
+      }
+
+      setFirebaseUser(user);
+      setAuthReady(true);
+      setCloudError(null);
+
+      if (!user || !user.email) {
+        setCloudStatus('local');
+        setWorkspaceMeta(null);
+        return;
+      }
+
+      setCloudStatus('connecting');
+      try {
+        const result = await checkAndInitializeWorkspace(user, latestSeedRef.current);
+        if (isDisposed) return;
+
+        if (result.status === 'unauthorized') {
+          setCloudStatus('unauthorized');
+          setWorkspaceMeta(null);
+          return;
+        }
+
+        if (result.workspace) {
+          setWorkspaceMeta(result.workspace);
+        }
+        setCloudStatus('synced');
+
+        unsubWorkspace = subscribeToWorkspace(user.email, {
+          onWorkspace: (meta) => setWorkspaceMeta(meta),
+          onPasscode: (passcode) => {
+            setAdminPassword(passcode);
+            localStorage.setItem(STORAGE_KEYS.PASSWORD, passcode);
+          },
+          onAdmins: (list) => setAdmins(list),
+          onProjects: (list) => setProjects(list),
+          onDesigners: (list) => setDesigners(list),
+          onMovements: (list) => setMovements(list),
+          onDevices: (list) => setDevices(list),
+        });
+      } catch (err) {
+        if (isDisposed) return;
+        console.error('Firebase workspace sync error:', err);
+        setCloudError(
+          err instanceof Error
+            ? 'Could not sync with Firebase workspace. Please verify permissions or retry.'
+            : 'Firebase workspace sync error.'
+        );
+        setCloudStatus('unauthorized');
+      }
+    });
+
+    return () => {
+      isDisposed = true;
+      unsubAuth();
+      if (unsubWorkspace) unsubWorkspace();
+    };
+  }, []);
+
+  const handleGoogleSignIn = async () => {
+    setCloudError(null);
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Google sign-in failed.';
+      if (!msg.includes('popup-closed-by-user')) {
+        setCloudError(msg);
+      }
+    }
+  };
+
+  const handleGoogleSignOut = async () => {
+    await signOut(auth);
+    setCloudStatus('local');
+    setWorkspaceMeta(null);
+  };
+
+  const handleUpdateMemberEmails = async (nextEmails: string[]) => {
+    await updateWorkspaceMemberEmailsInCloud(nextEmails);
+  };
+
+  const activeMemberEmails =
+    workspaceMeta?.memberEmails ||
+    (firebaseUser?.email ? [firebaseUser.email] : [BOOTSTRAP_ADMIN_EMAIL]);
+
   // Auth Handler helpers with pending action execution
   const handleLoginSuccess = () => {
     setIsAdminLoggedIn(true);
@@ -218,16 +364,23 @@ export default function App() {
   };
 
   const handleSaveAdmin = (adminData: Omit<Admin, 'id'> & { id?: string }) => {
+    const isNew = !adminData.id;
+    let targetAdmin: Admin;
     if (adminData.id) {
+      const existing = admins.find((a) => a.id === adminData.id);
+      targetAdmin = { ...(existing || {}), ...adminData } as Admin;
       setAdmins((prev) =>
         prev.map((a) => (a.id === adminData.id ? { ...a, ...adminData } : a))
       );
     } else {
-      const newAdmin: Admin = {
+      targetAdmin = {
         ...adminData,
         id: `admin-${Date.now()}`,
       };
-      setAdmins((prev) => [...prev, newAdmin]);
+      setAdmins((prev) => [...prev, targetAdmin]);
+    }
+    if (cloudStatus === 'synced') {
+      void saveAdminToCloud(targetAdmin, isNew, activeMemberEmails);
     }
   };
 
@@ -243,8 +396,12 @@ export default function App() {
         title: `Delete Admin "${admin.name}"?`,
         description: `Are you sure you want to delete ${admin.name}? This will remove the admin and delete their ${adminProjects.length} assigned project(s).`,
         onConfirm: () => {
+          const projectIdsToDelete = adminProjects.map((p) => p.id);
           setAdmins((prev) => prev.filter((a) => a.id !== adminId));
           setProjects((prev) => prev.filter((p) => p.adminId !== adminId));
+          if (cloudStatus === 'synced') {
+            void deleteAdminAndProjectsFromCloud(adminId, projectIdsToDelete);
+          }
         },
       });
     });
@@ -270,17 +427,24 @@ export default function App() {
   const handleSaveProject = (
     projectData: Omit<Project, 'id' | 'createdAt'> & { id?: string }
   ) => {
+    const isNew = !projectData.id;
+    let targetProject: Project;
     if (projectData.id) {
+      const existing = projects.find((p) => p.id === projectData.id);
+      targetProject = { ...(existing || {}), ...projectData } as Project;
       setProjects((prev) =>
         prev.map((p) => (p.id === projectData.id ? { ...p, ...projectData } : p))
       );
     } else {
-      const newProject: Project = {
+      targetProject = {
         ...projectData,
         id: `proj-${Date.now()}`,
         createdAt: new Date().toISOString().split('T')[0],
       };
-      setProjects((prev) => [newProject, ...prev]);
+      setProjects((prev) => [targetProject, ...prev]);
+    }
+    if (cloudStatus === 'synced') {
+      void saveProjectToCloud(targetProject, isNew, activeMemberEmails);
     }
   };
 
@@ -294,6 +458,9 @@ export default function App() {
         title: `Delete Project "${project.name}"?`,
         description: `Are you sure you want to delete the project "${project.name}"? This will permanently remove the project from both "Admins & Assignments" and the "All Projects Directory".`,
         onConfirm: () => {
+          const linkedMovementIds = movements
+            .filter((m) => m.projectId === projectId)
+            .map((m) => m.id);
           // Remove from projects list (shared across Admins board and All Projects Directory)
           setProjects((prev) => {
             const updated = prev.filter((p) => p.id !== projectId);
@@ -306,6 +473,9 @@ export default function App() {
             localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(updated));
             return updated;
           });
+          if (cloudStatus === 'synced') {
+            void deleteProjectAndMovementsFromCloud(projectId, linkedMovementIds);
+          }
         },
       });
     });
@@ -316,6 +486,9 @@ export default function App() {
       setProjects((prev) =>
         prev.map((p) => (p.id === projectId ? { ...p, status } : p))
       );
+      if (cloudStatus === 'synced') {
+        void updateProjectStatusInCloud(projectId, status);
+      }
     });
   };
 
@@ -338,16 +511,23 @@ export default function App() {
   const handleSaveDesigner = (
     designerData: Omit<Designer, 'id'> & { id?: string }
   ) => {
+    const isNew = !designerData.id;
+    let targetDesigner: Designer;
     if (designerData.id) {
+      const existing = designers.find((d) => d.id === designerData.id);
+      targetDesigner = { ...(existing || {}), ...designerData } as Designer;
       setDesigners((prev) =>
         prev.map((d) => (d.id === designerData.id ? { ...d, ...designerData } : d))
       );
     } else {
-      const newDesigner: Designer = {
+      targetDesigner = {
         ...designerData,
         id: `des-${Date.now()}`,
       };
-      setDesigners((prev) => [...prev, newDesigner]);
+      setDesigners((prev) => [...prev, targetDesigner]);
+    }
+    if (cloudStatus === 'synced') {
+      void saveDesignerToCloud(targetDesigner, isNew, activeMemberEmails);
     }
   };
 
@@ -362,6 +542,9 @@ export default function App() {
         description: `Are you sure you want to delete or remove allotment for ${designer.name}?`,
         onConfirm: () => {
           setDesigners((prev) => prev.filter((d) => d.id !== designerId));
+          if (cloudStatus === 'synced') {
+            void deleteDesignerFromCloud(designerId);
+          }
         },
       });
     });
@@ -387,7 +570,11 @@ export default function App() {
   const handleSaveClient = (
     movementData: Omit<ClientMovement, 'id' | 'createdAt'> & { id?: string }
   ) => {
+    const isNew = !movementData.id;
+    let targetMovement: ClientMovement;
     if (movementData.id) {
+      const existing = movements.find((m) => m.id === movementData.id);
+      targetMovement = { ...(existing || {}), ...movementData } as ClientMovement;
       setMovements((prev) =>
         prev.map((m) =>
           m.id === movementData.id
@@ -396,12 +583,15 @@ export default function App() {
         )
       );
     } else {
-      const newMovement: ClientMovement = {
+      targetMovement = {
         ...movementData,
         id: `cm-${Date.now()}`,
         createdAt: new Date().toISOString(),
       };
-      setMovements((prev) => [newMovement, ...prev]);
+      setMovements((prev) => [targetMovement, ...prev]);
+    }
+    if (cloudStatus === 'synced') {
+      void saveMovementToCloud(targetMovement, isNew, activeMemberEmails);
     }
   };
 
@@ -415,6 +605,9 @@ export default function App() {
         description: `Are you sure you want to remove this client movement record?`,
         onConfirm: () => {
           setMovements((prev) => prev.filter((m) => m.id !== movementId));
+          if (cloudStatus === 'synced') {
+            void deleteMovementFromCloud(movementId);
+          }
         },
       });
     });
@@ -439,7 +632,11 @@ export default function App() {
   const handleSaveDevice = (
     deviceData: Omit<DeviceAllocation, 'id' | 'createdAt'> & { id?: string }
   ) => {
+    const isNew = !deviceData.id;
+    let targetDevice: DeviceAllocation;
     if (deviceData.id) {
+      const existing = devices.find((d) => d.id === deviceData.id);
+      targetDevice = { ...(existing || {}), ...deviceData } as DeviceAllocation;
       setDevices((prev) =>
         prev.map((d) =>
           d.id === deviceData.id
@@ -448,12 +645,15 @@ export default function App() {
         )
       );
     } else {
-      const newDevice: DeviceAllocation = {
+      targetDevice = {
         ...deviceData,
         id: `dev-${Date.now()}`,
         createdAt: new Date().toISOString(),
       };
-      setDevices((prev) => [newDevice, ...prev]);
+      setDevices((prev) => [targetDevice, ...prev]);
+    }
+    if (cloudStatus === 'synced') {
+      void saveDeviceToCloud(targetDevice, isNew, activeMemberEmails);
     }
   };
 
@@ -468,6 +668,9 @@ export default function App() {
         description: `Are you sure you want to remove this device allocation from ${admin?.name || target.adminName || 'Admin'}? (SIM: ${target.simNumber})`,
         onConfirm: () => {
           setDevices((prev) => prev.filter((d) => d.id !== deviceId));
+          if (cloudStatus === 'synced') {
+            void deleteDeviceFromCloud(deviceId);
+          }
         },
       });
     });
@@ -491,6 +694,9 @@ export default function App() {
           localStorage.removeItem(STORAGE_KEYS.DESIGNERS);
           localStorage.removeItem(STORAGE_KEYS.MOVEMENTS);
           localStorage.removeItem(STORAGE_KEYS.DEVICES);
+          if (cloudStatus === 'synced') {
+            void resetCloudWorkspaceToSeed(activeMemberEmails);
+          }
         },
       });
     });
@@ -524,10 +730,96 @@ export default function App() {
         onOpenAddDevice={() => handleOpenAddDevice()}
         onResetData={handleResetToInitialData}
         onOpenChangePassword={() => setIsChangePasswordModalOpen(true)}
+        firebaseUser={firebaseUser}
+        cloudStatus={cloudStatus}
+        onGoogleSignIn={handleGoogleSignIn}
+        onOpenCloudModal={() => setIsTeamCloudModalOpen(true)}
       />
 
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Cloud Sync / Authorization Banners */}
+        {cloudError && (
+          <div className="mb-4 p-3 rounded-xl bg-pink-50 border border-pink-200 flex items-center justify-between gap-3 text-xs text-pink-800">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-pink-600 shrink-0" />
+              <span className="font-semibold">{cloudError}</span>
+            </div>
+            <button
+              onClick={() => setCloudError(null)}
+              className="text-pink-600 hover:text-pink-900 p-1 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {authReady && cloudStatus === 'local' && !isCloudBannerDismissed && (
+          <div className="mb-5 p-3.5 rounded-2xl bg-orange-50/90 border border-orange-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-white border border-orange-200 flex items-center justify-center text-orange-600 shrink-0 shadow-xs">
+                <Cloud className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-xs font-black text-black">
+                  Enable Multi-Device &amp; Real-Time Team Sync with Firebase
+                </p>
+                <p className="text-[11px] font-medium text-zinc-700">
+                  Sign in with Google so every edit you or your team makes updates live across all devices and shared links.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                id="banner-connect-firebase-btn"
+                onClick={handleGoogleSignIn}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-gradient-to-r from-orange-500 to-pink-600 hover:from-orange-600 hover:to-pink-700 rounded-xl shadow-xs transition-all cursor-pointer"
+              >
+                <Cloud className="w-3.5 h-3.5" />
+                <span>Sign in with Google</span>
+              </button>
+              <button
+                id="banner-share-help-btn"
+                onClick={() => setIsTeamCloudModalOpen(true)}
+                className="inline-flex items-center gap-1 px-3 py-2 text-xs font-bold text-zinc-700 bg-white hover:bg-zinc-100 border border-zinc-300 rounded-xl transition-colors cursor-pointer"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>Steps</span>
+              </button>
+              <button
+                onClick={() => setIsCloudBannerDismissed(true)}
+                title="Dismiss banner"
+                className="p-1.5 text-zinc-500 hover:text-black rounded-lg hover:bg-orange-100 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {authReady && cloudStatus === 'unauthorized' && firebaseUser && (
+          <div className="mb-5 p-4 rounded-2xl bg-pink-50 border border-pink-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-pink-600 shrink-0 mt-0.5" />
+              <div>
+                <h3 className="text-xs font-black text-black">
+                  Workspace Access Needed ({firebaseUser.email})
+                </h3>
+                <p className="text-[11px] font-medium text-pink-800 mt-0.5">
+                  Ask the workspace owner (<span className="font-bold">{BOOTSTRAP_ADMIN_EMAIL}</span>) to open{' '}
+                  <span className="font-bold">Live Cloud Sync</span> and add <span className="font-bold">{firebaseUser.email}</span> to Authorized Team Members.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setIsTeamCloudModalOpen(true)}
+              className="px-3.5 py-2 text-xs font-bold text-pink-800 bg-white hover:bg-pink-100 border border-pink-300 rounded-xl transition-colors cursor-pointer shrink-0"
+            >
+              Account / Sign Out
+            </button>
+          </div>
+        )}
+
         {/* Statistics Bar */}
         <StatsBar admins={admins} projects={projects} />
 
@@ -774,16 +1066,6 @@ export default function App() {
             />
           )
         )}
-
-        {/* Tab 5: Google Sheets Collector & Sync */}
-        {activeTab === 'sheets' && (
-          <GoogleSheetsView
-            admins={admins}
-            projects={projects}
-            movements={movements}
-            devices={devices}
-          />
-        )}
       </main>
 
       {/* Modals */}
@@ -854,6 +1136,17 @@ export default function App() {
         onConfirm={deleteModalConfig.onConfirm}
         title={deleteModalConfig.title}
         description={deleteModalConfig.description}
+      />
+
+      <TeamCloudModal
+        isOpen={isTeamCloudModalOpen}
+        onClose={() => setIsTeamCloudModalOpen(false)}
+        firebaseUser={firebaseUser}
+        cloudStatus={cloudStatus}
+        workspaceMeta={workspaceMeta}
+        onGoogleSignIn={handleGoogleSignIn}
+        onGoogleSignOut={handleGoogleSignOut}
+        onUpdateMemberEmails={handleUpdateMemberEmails}
       />
     </div>
   );

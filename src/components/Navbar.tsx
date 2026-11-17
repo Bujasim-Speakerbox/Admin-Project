@@ -16,8 +16,11 @@ import {
   UserCheck,
   Smartphone,
   KeyRound,
-  FileSpreadsheet
+  Cloud,
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
+import { User } from 'firebase/auth';
 import { ActiveTab } from '../types';
 
 interface NavbarProps {
@@ -34,6 +37,10 @@ interface NavbarProps {
   onOpenAddDevice?: () => void;
   onResetData: () => void;
   onOpenChangePassword?: () => void;
+  firebaseUser: User | null;
+  cloudStatus: 'local' | 'connecting' | 'synced' | 'unauthorized';
+  onGoogleSignIn: () => void;
+  onOpenCloudModal: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -50,6 +57,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenAddDevice,
   onResetData,
   onOpenChangePassword,
+  firebaseUser,
+  cloudStatus,
+  onGoogleSignIn,
+  onOpenCloudModal,
 }) => {
   return (
     <header id="main-navbar" className="bg-white/95 backdrop-blur-md border-b border-zinc-200 sticky top-0 z-30 shadow-xs">
@@ -109,6 +120,48 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Action & Auth Buttons */}
           <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            {/* Firebase Cloud Sync Control */}
+            {!firebaseUser ? (
+              <button
+                id="connect-firebase-nav-btn"
+                onClick={onGoogleSignIn}
+                title="Sign in with Google to save and sync data live across devices"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-xl transition-colors cursor-pointer"
+              >
+                <Cloud className="w-3.5 h-3.5 text-orange-600" />
+                <span>Connect Firebase</span>
+              </button>
+            ) : cloudStatus === 'synced' ? (
+              <button
+                id="cloud-synced-nav-btn"
+                onClick={onOpenCloudModal}
+                title="Live Firebase Sync active — click to share link or manage team access"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-xl transition-colors cursor-pointer"
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Live Cloud Sync</span>
+              </button>
+            ) : cloudStatus === 'connecting' ? (
+              <button
+                id="cloud-connecting-nav-btn"
+                onClick={onOpenCloudModal}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-orange-700 bg-orange-50 border border-orange-200 rounded-xl cursor-pointer"
+              >
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-orange-600" />
+                <span>Syncing...</span>
+              </button>
+            ) : (
+              <button
+                id="cloud-unauthorized-nav-btn"
+                onClick={onOpenCloudModal}
+                title="Signed-in email needs workspace authorization"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-pink-700 bg-pink-50 hover:bg-pink-100 border border-pink-200 rounded-xl transition-colors cursor-pointer"
+              >
+                <AlertCircle className="w-3.5 h-3.5 text-pink-600" />
+                <span>Access Pending</span>
+              </button>
+            )}
+
             {isAdminLoggedIn ? (
               <>
                 <div className="dropdown relative inline-block text-left group">
@@ -282,18 +335,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 Unlocked
               </span>
             )}
-          </button>
-          <button
-            id="tab-sheets"
-            onClick={() => setActiveTab('sheets')}
-            className={`pb-3 text-sm flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap ${
-              activeTab === 'sheets'
-                ? 'border-b-2 border-emerald-600 text-emerald-700 font-bold'
-                : 'border-transparent text-zinc-600 hover:text-black hover:border-zinc-300 font-semibold'
-            }`}
-          >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-            <span>Google Sheets</span>
           </button>
         </div>
       </div>

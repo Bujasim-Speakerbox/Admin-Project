@@ -80,4 +80,4 @@ export interface DeviceAllocation {
   createdAt: string;
 }
 
-export type ActiveTab = 'admins' | 'projects' | 'clients' | 'devices' | 'sheets';
+export type ActiveTab = 'admins' | 'projects' | 'clients' | 'devices';
