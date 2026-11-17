@@ -33,6 +33,7 @@ interface TeamCloudModalProps {
   onGoogleSignIn: () => void;
   onGoogleSignOut: () => void;
   onUpdateMemberEmails: (nextEmails: string[]) => Promise<void>;
+  onPushCurrentStateToCloud?: () => Promise<{ totalSynced: number }>;
 }
 
 const SHARED_APP_URL =
@@ -47,6 +48,7 @@ export function TeamCloudModal({
   onGoogleSignIn,
   onGoogleSignOut,
   onUpdateMemberEmails,
+  onPushCurrentStateToCloud,
 }: TeamCloudModalProps) {
   const [newEmail, setNewEmail] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
@@ -54,9 +56,28 @@ export function TeamCloudModal({
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
+  const [isPushingSnapshot, setIsPushingSnapshot] = useState(false);
   const [verifyResult, setVerifyResult] = useState<FirestoreVerificationResult | null>(null);
 
   if (!isOpen) return null;
+
+  const handlePushSnapshot = async () => {
+    if (!onPushCurrentStateToCloud) return;
+    setIsPushingSnapshot(true);
+    setErrorMsg('');
+    setSuccessMsg('');
+    try {
+      const res = await onPushCurrentStateToCloud();
+      setSuccessMsg(`Synced ${res.totalSynced} records directly to Firestore.`);
+      await handleVerifyConnection();
+    } catch (err) {
+      setErrorMsg(
+        err instanceof Error ? err.message : 'Failed to push current records to Firestore.'
+      );
+    } finally {
+      setIsPushingSnapshot(false);
+    }
+  };
 
   const handleVerifyConnection = async () => {
     setIsVerifying(true);
@@ -421,27 +442,45 @@ export function TeamCloudModal({
 
               {/* Firestore Read/Write Verification */}
               <div className="pt-3 border-t border-zinc-200 space-y-2">
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-1.5">
                     <Database className="w-4 h-4 text-orange-600" />
                     <span className="text-xs font-bold text-black uppercase tracking-wider">
                       Firestore Connection Check
                     </span>
                   </div>
-                  <button
-                    id="verify-firestore-btn"
-                    type="button"
-                    disabled={isVerifying}
-                    onClick={handleVerifyConnection}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-xl transition-colors cursor-pointer disabled:opacity-60"
-                  >
-                    {isVerifying ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="w-3.5 h-3.5" />
+                  <div className="flex items-center gap-2">
+                    {isOwner && onPushCurrentStateToCloud && (
+                      <button
+                        id="push-snapshot-firestore-btn"
+                        type="button"
+                        disabled={isPushingSnapshot || isVerifying}
+                        onClick={handlePushSnapshot}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-zinc-700 bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 rounded-xl transition-colors cursor-pointer disabled:opacity-60"
+                      >
+                        {isPushingSnapshot ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Cloud className="w-3.5 h-3.5 text-orange-600" />
+                        )}
+                        <span>{isPushingSnapshot ? 'Uploading...' : 'Sync Screen to Cloud'}</span>
+                      </button>
                     )}
-                    <span>{isVerifying ? 'Verifying...' : 'Verify Live Save & Load'}</span>
-                  </button>
+                    <button
+                      id="verify-firestore-btn"
+                      type="button"
+                      disabled={isVerifying || isPushingSnapshot}
+                      onClick={handleVerifyConnection}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-xl transition-colors cursor-pointer disabled:opacity-60"
+                    >
+                      {isVerifying ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                      )}
+                      <span>{isVerifying ? 'Verifying...' : 'Verify Live Save & Load'}</span>
+                    </button>
+                  </div>
                 </div>
 
                 {verifyResult && (
@@ -475,7 +514,7 @@ export function TeamCloudModal({
             <ol className="space-y-1.5 text-xs text-zinc-700 list-decimal list-inside">
               <li>
                 <span className="font-bold text-black">Your own multiple devices:</span> Open the Shared Team App Link on your phone, tablet, or another computer and click{' '}
-                <span className="font-semibold text-orange-700">Connect Firebase</span> using the exact same Google account (<span className="font-semibold">{BOOTSTRAP_ADMIN_EMAIL}</span>).
+                <span className="font-semibold text-orange-700">Sign in to Sync</span> using the exact same Google account (<span className="font-semibold">{BOOTSTRAP_ADMIN_EMAIL}</span>).
               </li>
               <li>
                 <span className="font-bold text-black">Share with teammates:</span> Add your teammate&apos;s Google email in the box above, then copy &amp; send them the Shared Team App Link.

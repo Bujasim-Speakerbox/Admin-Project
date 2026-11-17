@@ -13,6 +13,7 @@ import {
   setDoc,
   Timestamp,
   updateDoc,
+  waitForPendingWrites,
   where,
   writeBatch,
   Unsubscribe,
@@ -51,6 +52,15 @@ export interface WorkspaceMetadata {
   seeded: boolean;
 }
 
+export interface WorkspaceSeedData {
+  admins: Admin[];
+  projects: Project[];
+  designers: Designer[];
+  movements: ClientMovement[];
+  devices: DeviceAllocation[];
+  passcode: string;
+}
+
 // --- Sanitization Helpers (Mirroring firebase-blueprint.json verbatim) ---
 export function sanitizeId(id: string): string {
   const cleaned = (id || `id-${Date.now()}`)
@@ -72,7 +82,16 @@ function clampColor(val: string | undefined): string {
 function sanitizeMemberEmails(emails: string[], currentUserEmail?: string | null): string[] {
   const set = new Set<string>();
   set.add(BOOTSTRAP_ADMIN_EMAIL.toLowerCase());
-  if (currentUserEmail) set.add(currentUserEmail.toLowerCase().trim());
+  if (currentUserEmail) {
+    const trimmed = currentUserEmail.trim().slice(0, 160);
+    const lowered = trimmed.toLowerCase();
+    if (lowered.length >= 3 && lowered.includes('@')) {
+      set.add(lowered);
+    }
+    if (trimmed.length >= 3 && trimmed.includes('@') && trimmed !== lowered) {
+      set.add(trimmed);
+    }
+  }
   for (const e of emails) {
     const cleaned = e.toLowerCase().trim().slice(0, 160);
     if (cleaned.length >= 3 && cleaned.includes('@')) {
@@ -119,6 +138,17 @@ function buildAdminPayload(
     payload.createdAt = serverTimestamp();
   }
   return payload;
+}
+
+function buildAdminUpdateFields(admin: Admin) {
+  return {
+    name: clampStr(admin.name, 100, 'Admin'),
+    email: clampStr(admin.email, 160, 'admin@company.com'),
+    department: clampStr(admin.department, 120, 'Operations'),
+    color: clampColor(admin.color),
+    avatarUrl: admin.avatarUrl?.trim() ? clampStr(admin.avatarUrl, 500) : deleteField(),
+    updatedAt: serverTimestamp(),
+  };
 }
 
 function buildProjectPayload(
@@ -187,6 +217,53 @@ function buildProjectPayload(
   return payload;
 }
 
+function buildProjectUpdateFields(project: Project) {
+  const validStatuses: ProjectStatus[] = ['Active', 'In Progress', 'On Hold', 'Completed'];
+  const validPriorities: ProjectPriority[] = ['High', 'Medium', 'Low'];
+  const validTypes: ProjectType[] = ['social_media', 'branding'];
+  const validCycles: BillingCycle[] = [
+    '1 to 30 or 31',
+    '5 to 5',
+    '10 to 10',
+    '15 to 15',
+    '20 to 20',
+    '25 to 25',
+  ];
+  return {
+    name: clampStr(project.name, 150, 'Untitled Project'),
+    adminId: sanitizeId(project.adminId || 'admin-1'),
+    designerId: project.designerId?.trim()
+      ? clampStr(project.designerId, 128)
+      : deleteField(),
+    status: validStatuses.includes(project.status) ? project.status : 'Active',
+    priority: validPriorities.includes(project.priority) ? project.priority : 'Medium',
+    description: project.description?.trim()
+      ? clampStr(project.description, 1000)
+      : deleteField(),
+    category: project.category?.trim()
+      ? clampStr(project.category, 120)
+      : deleteField(),
+    projectType:
+      project.projectType && validTypes.includes(project.projectType)
+        ? project.projectType
+        : 'social_media',
+    billingCycle:
+      project.billingCycle && validCycles.includes(project.billingCycle)
+        ? project.billingCycle
+        : '1 to 30 or 31',
+    startDate: project.startDate?.trim()
+      ? clampStr(project.startDate, 32)
+      : deleteField(),
+    endDate: project.endDate?.trim()
+      ? clampStr(project.endDate, 32)
+      : deleteField(),
+    dueDate: project.dueDate?.trim()
+      ? clampStr(project.dueDate, 32)
+      : deleteField(),
+    updatedAt: serverTimestamp(),
+  };
+}
+
 function buildDesignerPayload(
   designer: Designer,
   ownerUid: string,
@@ -222,6 +299,24 @@ function buildDesignerPayload(
     payload.createdAt = serverTimestamp();
   }
   return payload;
+}
+
+function buildDesignerUpdateFields(designer: Designer) {
+  const validStatuses = ['Available', 'Busy', 'On Leave'];
+  return {
+    name: clampStr(designer.name, 100, 'Designer'),
+    email: clampStr(designer.email, 160, 'designer@company.com'),
+    role: clampStr(designer.role, 100, 'Designer'),
+    avatarUrl: designer.avatarUrl?.trim()
+      ? clampStr(designer.avatarUrl, 500)
+      : deleteField(),
+    allocatedAdminIds: Array.isArray(designer.allocatedAdminIds)
+      ? designer.allocatedAdminIds.map((a) => sanitizeId(a)).slice(0, 20)
+      : [],
+    status: validStatuses.includes(designer.status) ? designer.status : 'Available',
+    phone: designer.phone?.trim() ? clampStr(designer.phone, 40) : deleteField(),
+    updatedAt: serverTimestamp(),
+  };
 }
 
 function buildMovementPayload(
@@ -265,6 +360,33 @@ function buildMovementPayload(
     payload.createdAt = serverTimestamp();
   }
   return payload;
+}
+
+function buildMovementUpdateFields(movement: ClientMovement) {
+  return {
+    clientType: movement.clientType === 'exit' ? 'exit' : 'onboarded',
+    projectName: clampStr(movement.projectName, 150, 'Client Project'),
+    projectId: movement.projectId?.trim()
+      ? clampStr(movement.projectId, 128)
+      : deleteField(),
+    adminId: movement.adminId?.trim()
+      ? clampStr(movement.adminId, 128)
+      : deleteField(),
+    month: clampStr(movement.month, 10, new Date().toISOString().slice(0, 7)),
+    date: clampStr(movement.date, 32, new Date().toISOString().split('T')[0]),
+    brandType: movement.brandType?.trim()
+      ? clampStr(movement.brandType, 120)
+      : deleteField(),
+    projectType:
+      movement.projectType === 'social_media' || movement.projectType === 'branding'
+        ? movement.projectType
+        : deleteField(),
+    exitReason: movement.exitReason?.trim()
+      ? clampStr(movement.exitReason, 500)
+      : deleteField(),
+    notes: movement.notes?.trim() ? clampStr(movement.notes, 1000) : deleteField(),
+    updatedAt: serverTimestamp(),
+  };
 }
 
 function buildDevicePayload(
@@ -315,6 +437,35 @@ function buildDevicePayload(
   return payload;
 }
 
+function buildDeviceUpdateFields(device: DeviceAllocation) {
+  const validTypes = ['smartphone', 'laptop', 'tablet', 'hotspot', 'other'];
+  const validStatuses = ['Active', 'Spare', 'In Repair', 'Returned'];
+  return {
+    adminId: sanitizeId(device.adminId || 'admin-1'),
+    adminName: device.adminName?.trim()
+      ? clampStr(device.adminName, 100)
+      : deleteField(),
+    deviceName: clampStr(device.deviceName, 150, 'Device'),
+    simNumber: clampStr(device.simNumber, 40, 'N/A'),
+    deviceType:
+      device.deviceType && validTypes.includes(device.deviceType)
+        ? device.deviceType
+        : deleteField(),
+    carrier: device.carrier?.trim() ? clampStr(device.carrier, 80) : deleteField(),
+    imeiOrSerial: device.imeiOrSerial?.trim()
+      ? clampStr(device.imeiOrSerial, 80)
+      : deleteField(),
+    status: validStatuses.includes(device.status) ? device.status : 'Active',
+    allocatedDate: clampStr(
+      device.allocatedDate,
+      32,
+      new Date().toISOString().split('T')[0]
+    ),
+    notes: device.notes?.trim() ? clampStr(device.notes, 1000) : deleteField(),
+    updatedAt: serverTimestamp(),
+  };
+}
+
 // --- Batch Helper (Max 400 ops per Firestore batch) ---
 async function commitBatchedWrites(
   operations: Array<(batch: ReturnType<typeof writeBatch>) => void>
@@ -328,17 +479,70 @@ async function commitBatchedWrites(
   }
 }
 
+function buildSeedOperations(
+  seedData: WorkspaceSeedData,
+  ownerUid: string,
+  memberEmails: string[]
+): Array<(batch: ReturnType<typeof writeBatch>) => void> {
+  const ops: Array<(batch: ReturnType<typeof writeBatch>) => void> = [];
+
+  seedData.admins.forEach((admin) => {
+    const id = sanitizeId(admin.id);
+    ops.push((b) =>
+      b.set(
+        doc(db, 'workspaces', WORKSPACE_ID, 'admins', id),
+        buildAdminPayload(admin, ownerUid, memberEmails, true)
+      )
+    );
+  });
+
+  seedData.projects.forEach((project) => {
+    const id = sanitizeId(project.id);
+    ops.push((b) =>
+      b.set(
+        doc(db, 'workspaces', WORKSPACE_ID, 'projects', id),
+        buildProjectPayload(project, ownerUid, memberEmails, true)
+      )
+    );
+  });
+
+  seedData.designers.forEach((designer) => {
+    const id = sanitizeId(designer.id);
+    ops.push((b) =>
+      b.set(
+        doc(db, 'workspaces', WORKSPACE_ID, 'designers', id),
+        buildDesignerPayload(designer, ownerUid, memberEmails, true)
+      )
+    );
+  });
+
+  seedData.movements.forEach((movement) => {
+    const id = sanitizeId(movement.id);
+    ops.push((b) =>
+      b.set(
+        doc(db, 'workspaces', WORKSPACE_ID, 'movements', id),
+        buildMovementPayload(movement, ownerUid, memberEmails, true)
+      )
+    );
+  });
+
+  seedData.devices.forEach((device) => {
+    const id = sanitizeId(device.id);
+    ops.push((b) =>
+      b.set(
+        doc(db, 'workspaces', WORKSPACE_ID, 'devices', id),
+        buildDevicePayload(device, ownerUid, memberEmails, true)
+      )
+    );
+  });
+
+  return ops;
+}
+
 // --- Workspace Initialization & Access Check ---
 export async function checkAndInitializeWorkspace(
   user: User,
-  seedData: {
-    admins: Admin[];
-    projects: Project[];
-    designers: Designer[];
-    movements: ClientMovement[];
-    devices: DeviceAllocation[];
-    passcode: string;
-  }
+  seedData: WorkspaceSeedData
 ): Promise<{
   status: 'authorized' | 'unauthorized';
   workspace?: WorkspaceMetadata;
@@ -347,33 +551,97 @@ export async function checkAndInitializeWorkspace(
   const workspaceRef = doc(db, 'workspaces', WORKSPACE_ID);
 
   try {
-    const snap = await getDoc(workspaceRef);
+    const rawEmail = (user.email || '').trim();
+    const normalizedEmail = rawEmail.toLowerCase();
+    const snap = await getDocFromServer(workspaceRef);
+
     if (snap.exists()) {
-      const data = snap.data() as WorkspaceMetadata;
+      let data = snap.data() as WorkspaceMetadata;
+      const isOwnerOrBootstrap =
+        normalizedEmail === BOOTSTRAP_ADMIN_EMAIL.toLowerCase() ||
+        data.ownerUid === user.uid;
+
+      if (isOwnerOrBootstrap && rawEmail) {
+        const currentMembers = Array.isArray(data.memberEmails) ? data.memberEmails : [];
+        const hasMember =
+          currentMembers.includes(normalizedEmail) || currentMembers.includes(rawEmail);
+
+        if (!hasMember) {
+          const updatedMembers = sanitizeMemberEmails(currentMembers, rawEmail);
+          await updateDoc(workspaceRef, {
+            memberEmails: updatedMembers,
+            updatedAt: serverTimestamp(),
+          });
+          data = { ...data, memberEmails: updatedMembers };
+        }
+
+        // Ensure security/passcode document exists
+        const secRef = doc(db, 'workspaces', WORKSPACE_ID, 'security', SECURITY_DOC_ID);
+        const secSnap = await getDocFromServer(secRef);
+        if (!secSnap.exists()) {
+          await setDoc(secRef, {
+            workspaceId: WORKSPACE_ID,
+            ownerUid: sanitizeId(user.uid),
+            passcode: clampStr(seedData.passcode, 64, '12345'),
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        }
+
+        // Self-heal if workspace was created with seeded: false or collections are completely empty
+        const [adminsCheck, projectsCheck] = await Promise.all([
+          getDocsFromServer(
+            query(
+              collection(db, 'workspaces', WORKSPACE_ID, 'admins'),
+              where('memberEmails', 'array-contains', normalizedEmail)
+            )
+          ),
+          getDocsFromServer(
+            query(
+              collection(db, 'workspaces', WORKSPACE_ID, 'projects'),
+              where('memberEmails', 'array-contains', normalizedEmail)
+            )
+          ),
+        ]);
+
+        if (data.seeded === false || (adminsCheck.empty && projectsCheck.empty)) {
+          const memberEmails = sanitizeMemberEmails(
+            data.memberEmails || [rawEmail],
+            rawEmail
+          );
+          const ownerUid = sanitizeId(user.uid);
+          const ops = buildSeedOperations(seedData, ownerUid, memberEmails);
+          await commitBatchedWrites(ops);
+          await updateDoc(workspaceRef, {
+            seeded: true,
+            updatedAt: serverTimestamp(),
+          });
+          await waitForPendingWrites(db);
+          data = { ...data, memberEmails, seeded: true };
+        }
+      }
+
       return { status: 'authorized', workspace: data };
     }
 
-    // Workspace does not exist yet: only bootstrap admin or first owner can initialize it
-    const userEmail = (user.email || '').toLowerCase().trim();
-    if (!userEmail || !user.emailVerified) {
+    // Workspace does not exist yet: initialize with seeded: false until batch succeeds
+    if (!rawEmail || !user.emailVerified) {
       return { status: 'unauthorized' };
     }
 
-    const memberEmails = sanitizeMemberEmails([userEmail], userEmail);
+    const memberEmails = sanitizeMemberEmails([rawEmail], rawEmail);
     const ownerUid = sanitizeId(user.uid);
 
-    // Create workspace root first
     await setDoc(workspaceRef, {
       name: 'Admin Project Manager Workspace',
       ownerUid,
-      ownerEmail: userEmail,
+      ownerEmail: rawEmail,
       memberEmails,
-      seeded: true,
+      seeded: false,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
 
-    // Create security passcode doc
     await setDoc(doc(db, 'workspaces', WORKSPACE_ID, 'security', SECURITY_DOC_ID), {
       workspaceId: WORKSPACE_ID,
       ownerUid,
@@ -382,67 +650,21 @@ export async function checkAndInitializeWorkspace(
       updatedAt: serverTimestamp(),
     });
 
-    // Batch seed all collections with current data
-    const ops: Array<(batch: ReturnType<typeof writeBatch>) => void> = [];
-
-    seedData.admins.forEach((admin) => {
-      const id = sanitizeId(admin.id);
-      ops.push((b) =>
-        b.set(
-          doc(db, 'workspaces', WORKSPACE_ID, 'admins', id),
-          buildAdminPayload(admin, ownerUid, memberEmails, true)
-        )
-      );
-    });
-
-    seedData.projects.forEach((project) => {
-      const id = sanitizeId(project.id);
-      ops.push((b) =>
-        b.set(
-          doc(db, 'workspaces', WORKSPACE_ID, 'projects', id),
-          buildProjectPayload(project, ownerUid, memberEmails, true)
-        )
-      );
-    });
-
-    seedData.designers.forEach((designer) => {
-      const id = sanitizeId(designer.id);
-      ops.push((b) =>
-        b.set(
-          doc(db, 'workspaces', WORKSPACE_ID, 'designers', id),
-          buildDesignerPayload(designer, ownerUid, memberEmails, true)
-        )
-      );
-    });
-
-    seedData.movements.forEach((movement) => {
-      const id = sanitizeId(movement.id);
-      ops.push((b) =>
-        b.set(
-          doc(db, 'workspaces', WORKSPACE_ID, 'movements', id),
-          buildMovementPayload(movement, ownerUid, memberEmails, true)
-        )
-      );
-    });
-
-    seedData.devices.forEach((device) => {
-      const id = sanitizeId(device.id);
-      ops.push((b) =>
-        b.set(
-          doc(db, 'workspaces', WORKSPACE_ID, 'devices', id),
-          buildDevicePayload(device, ownerUid, memberEmails, true)
-        )
-      );
-    });
-
+    const ops = buildSeedOperations(seedData, ownerUid, memberEmails);
     await commitBatchedWrites(ops);
+
+    await updateDoc(workspaceRef, {
+      seeded: true,
+      updatedAt: serverTimestamp(),
+    });
+    await waitForPendingWrites(db);
 
     return {
       status: 'authorized',
       workspace: {
         name: 'Admin Project Manager Workspace',
         ownerUid,
-        ownerEmail: userEmail,
+        ownerEmail: rawEmail,
         memberEmails,
         seeded: true,
       },
@@ -617,6 +839,11 @@ export function subscribeToWorkspace(
             createdAt: timestampToDateStr(data.createdAt),
           };
         });
+        list.sort(
+          (a, b) =>
+            (b.date || '').localeCompare(a.date || '') ||
+            a.id.localeCompare(b.id, undefined, { numeric: true })
+        );
         handlers.onMovements(list);
       },
       (error) => handleFirestoreError(error, OperationType.LIST, movementsPath)
@@ -648,6 +875,7 @@ export function subscribeToWorkspace(
             createdAt: timestampToDateStr(data.createdAt),
           };
         });
+        list.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
         handlers.onDevices(list);
       },
       (error) => handleFirestoreError(error, OperationType.LIST, devicesPath)
@@ -680,15 +908,14 @@ export async function saveAdminToCloud(
     if (isNew) {
       await setDoc(docRef, buildAdminPayload(admin, getAuthUid(), safeEmails, true));
     } else {
-      await updateDoc(docRef, {
-        name: clampStr(admin.name, 100, 'Admin'),
-        email: clampStr(admin.email, 160, 'admin@company.com'),
-        department: clampStr(admin.department, 120, 'Operations'),
-        color: clampColor(admin.color),
-        avatarUrl: admin.avatarUrl?.trim() ? clampStr(admin.avatarUrl, 500) : deleteField(),
-        updatedAt: serverTimestamp(),
-      });
+      const existingSnap = await getDoc(docRef);
+      if (!existingSnap.exists()) {
+        await setDoc(docRef, buildAdminPayload(admin, getAuthUid(), safeEmails, true));
+      } else {
+        await updateDoc(docRef, buildAdminUpdateFields(admin));
+      }
     }
+    await waitForPendingWrites(db);
   } catch (error) {
     handleFirestoreError(error, isNew ? OperationType.CREATE : OperationType.UPDATE, path);
   }
@@ -711,6 +938,7 @@ export async function deleteAdminAndProjectsFromCloud(
       );
     });
     await commitBatchedWrites(ops);
+    await waitForPendingWrites(db);
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
@@ -730,51 +958,14 @@ export async function saveProjectToCloud(
     if (isNew) {
       await setDoc(docRef, buildProjectPayload(project, getAuthUid(), safeEmails, true));
     } else {
-      const validStatuses: ProjectStatus[] = ['Active', 'In Progress', 'On Hold', 'Completed'];
-      const validPriorities: ProjectPriority[] = ['High', 'Medium', 'Low'];
-      const validTypes: ProjectType[] = ['social_media', 'branding'];
-      const validCycles: BillingCycle[] = [
-        '1 to 30 or 31',
-        '5 to 5',
-        '10 to 10',
-        '15 to 15',
-        '20 to 20',
-        '25 to 25',
-      ];
-      await updateDoc(docRef, {
-        name: clampStr(project.name, 150, 'Untitled Project'),
-        adminId: sanitizeId(project.adminId || 'admin-1'),
-        designerId: project.designerId?.trim()
-          ? clampStr(project.designerId, 128)
-          : deleteField(),
-        status: validStatuses.includes(project.status) ? project.status : 'Active',
-        priority: validPriorities.includes(project.priority) ? project.priority : 'Medium',
-        description: project.description?.trim()
-          ? clampStr(project.description, 1000)
-          : deleteField(),
-        category: project.category?.trim()
-          ? clampStr(project.category, 120)
-          : deleteField(),
-        projectType:
-          project.projectType && validTypes.includes(project.projectType)
-            ? project.projectType
-            : 'social_media',
-        billingCycle:
-          project.billingCycle && validCycles.includes(project.billingCycle)
-            ? project.billingCycle
-            : '1 to 30 or 31',
-        startDate: project.startDate?.trim()
-          ? clampStr(project.startDate, 32)
-          : deleteField(),
-        endDate: project.endDate?.trim()
-          ? clampStr(project.endDate, 32)
-          : deleteField(),
-        dueDate: project.dueDate?.trim()
-          ? clampStr(project.dueDate, 32)
-          : deleteField(),
-        updatedAt: serverTimestamp(),
-      });
+      const existingSnap = await getDoc(docRef);
+      if (!existingSnap.exists()) {
+        await setDoc(docRef, buildProjectPayload(project, getAuthUid(), safeEmails, true));
+      } else {
+        await updateDoc(docRef, buildProjectUpdateFields(project));
+      }
     }
+    await waitForPendingWrites(db);
   } catch (error) {
     handleFirestoreError(error, isNew ? OperationType.CREATE : OperationType.UPDATE, path);
   }
@@ -782,15 +973,28 @@ export async function saveProjectToCloud(
 
 export async function updateProjectStatusInCloud(
   projectId: string,
-  status: ProjectStatus
+  status: ProjectStatus,
+  fallbackProject?: Project,
+  memberEmails: string[] = []
 ) {
   const id = sanitizeId(projectId);
   const path = `workspaces/${WORKSPACE_ID}/projects/${id}`;
+  const docRef = doc(db, 'workspaces', WORKSPACE_ID, 'projects', id);
   try {
-    await updateDoc(doc(db, 'workspaces', WORKSPACE_ID, 'projects', id), {
-      status,
-      updatedAt: serverTimestamp(),
-    });
+    const existingSnap = await getDoc(docRef);
+    if (!existingSnap.exists() && fallbackProject) {
+      const safeEmails = sanitizeMemberEmails(memberEmails, auth.currentUser?.email);
+      await setDoc(
+        docRef,
+        buildProjectPayload({ ...fallbackProject, status }, getAuthUid(), safeEmails, true)
+      );
+    } else {
+      await updateDoc(docRef, {
+        status,
+        updatedAt: serverTimestamp(),
+      });
+    }
+    await waitForPendingWrites(db);
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
   }
@@ -813,6 +1017,7 @@ export async function deleteProjectAndMovementsFromCloud(
       );
     });
     await commitBatchedWrites(ops);
+    await waitForPendingWrites(db);
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
@@ -835,24 +1040,17 @@ export async function saveDesignerToCloud(
         buildDesignerPayload(designer, getAuthUid(), safeEmails, true)
       );
     } else {
-      const validStatuses = ['Available', 'Busy', 'On Leave'];
-      await updateDoc(docRef, {
-        name: clampStr(designer.name, 100, 'Designer'),
-        email: clampStr(designer.email, 160, 'designer@company.com'),
-        role: clampStr(designer.role, 100, 'Designer'),
-        avatarUrl: designer.avatarUrl?.trim()
-          ? clampStr(designer.avatarUrl, 500)
-          : deleteField(),
-        allocatedAdminIds: Array.isArray(designer.allocatedAdminIds)
-          ? designer.allocatedAdminIds.map((a) => sanitizeId(a)).slice(0, 20)
-          : [],
-        status: validStatuses.includes(designer.status)
-          ? designer.status
-          : 'Available',
-        phone: designer.phone?.trim() ? clampStr(designer.phone, 40) : deleteField(),
-        updatedAt: serverTimestamp(),
-      });
+      const existingSnap = await getDoc(docRef);
+      if (!existingSnap.exists()) {
+        await setDoc(
+          docRef,
+          buildDesignerPayload(designer, getAuthUid(), safeEmails, true)
+        );
+      } else {
+        await updateDoc(docRef, buildDesignerUpdateFields(designer));
+      }
     }
+    await waitForPendingWrites(db);
   } catch (error) {
     handleFirestoreError(error, isNew ? OperationType.CREATE : OperationType.UPDATE, path);
   }
@@ -863,6 +1061,7 @@ export async function deleteDesignerFromCloud(designerId: string) {
   const path = `workspaces/${WORKSPACE_ID}/designers/${id}`;
   try {
     await deleteDoc(doc(db, 'workspaces', WORKSPACE_ID, 'designers', id));
+    await waitForPendingWrites(db);
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
@@ -885,31 +1084,17 @@ export async function saveMovementToCloud(
         buildMovementPayload(movement, getAuthUid(), safeEmails, true)
       );
     } else {
-      await updateDoc(docRef, {
-        clientType: movement.clientType === 'exit' ? 'exit' : 'onboarded',
-        projectName: clampStr(movement.projectName, 150, 'Client Project'),
-        projectId: movement.projectId?.trim()
-          ? clampStr(movement.projectId, 128)
-          : deleteField(),
-        adminId: movement.adminId?.trim()
-          ? clampStr(movement.adminId, 128)
-          : deleteField(),
-        month: clampStr(movement.month, 10, new Date().toISOString().slice(0, 7)),
-        date: clampStr(movement.date, 32, new Date().toISOString().split('T')[0]),
-        brandType: movement.brandType?.trim()
-          ? clampStr(movement.brandType, 120)
-          : deleteField(),
-        projectType:
-          movement.projectType === 'social_media' || movement.projectType === 'branding'
-            ? movement.projectType
-            : deleteField(),
-        exitReason: movement.exitReason?.trim()
-          ? clampStr(movement.exitReason, 500)
-          : deleteField(),
-        notes: movement.notes?.trim() ? clampStr(movement.notes, 1000) : deleteField(),
-        updatedAt: serverTimestamp(),
-      });
+      const existingSnap = await getDoc(docRef);
+      if (!existingSnap.exists()) {
+        await setDoc(
+          docRef,
+          buildMovementPayload(movement, getAuthUid(), safeEmails, true)
+        );
+      } else {
+        await updateDoc(docRef, buildMovementUpdateFields(movement));
+      }
     }
+    await waitForPendingWrites(db);
   } catch (error) {
     handleFirestoreError(error, isNew ? OperationType.CREATE : OperationType.UPDATE, path);
   }
@@ -920,6 +1105,7 @@ export async function deleteMovementFromCloud(movementId: string) {
   const path = `workspaces/${WORKSPACE_ID}/movements/${id}`;
   try {
     await deleteDoc(doc(db, 'workspaces', WORKSPACE_ID, 'movements', id));
+    await waitForPendingWrites(db);
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
@@ -939,33 +1125,14 @@ export async function saveDeviceToCloud(
     if (isNew) {
       await setDoc(docRef, buildDevicePayload(device, getAuthUid(), safeEmails, true));
     } else {
-      const validTypes = ['smartphone', 'laptop', 'tablet', 'hotspot', 'other'];
-      const validStatuses = ['Active', 'Spare', 'In Repair', 'Returned'];
-      await updateDoc(docRef, {
-        adminId: sanitizeId(device.adminId || 'admin-1'),
-        adminName: device.adminName?.trim()
-          ? clampStr(device.adminName, 100)
-          : deleteField(),
-        deviceName: clampStr(device.deviceName, 150, 'Device'),
-        simNumber: clampStr(device.simNumber, 40, 'N/A'),
-        deviceType:
-          device.deviceType && validTypes.includes(device.deviceType)
-            ? device.deviceType
-            : deleteField(),
-        carrier: device.carrier?.trim() ? clampStr(device.carrier, 80) : deleteField(),
-        imeiOrSerial: device.imeiOrSerial?.trim()
-          ? clampStr(device.imeiOrSerial, 80)
-          : deleteField(),
-        status: validStatuses.includes(device.status) ? device.status : 'Active',
-        allocatedDate: clampStr(
-          device.allocatedDate,
-          32,
-          new Date().toISOString().split('T')[0]
-        ),
-        notes: device.notes?.trim() ? clampStr(device.notes, 1000) : deleteField(),
-        updatedAt: serverTimestamp(),
-      });
+      const existingSnap = await getDoc(docRef);
+      if (!existingSnap.exists()) {
+        await setDoc(docRef, buildDevicePayload(device, getAuthUid(), safeEmails, true));
+      } else {
+        await updateDoc(docRef, buildDeviceUpdateFields(device));
+      }
     }
+    await waitForPendingWrites(db);
   } catch (error) {
     handleFirestoreError(error, isNew ? OperationType.CREATE : OperationType.UPDATE, path);
   }
@@ -976,6 +1143,7 @@ export async function deleteDeviceFromCloud(deviceId: string) {
   const path = `workspaces/${WORKSPACE_ID}/devices/${id}`;
   try {
     await deleteDoc(doc(db, 'workspaces', WORKSPACE_ID, 'devices', id));
+    await waitForPendingWrites(db);
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
@@ -1000,6 +1168,7 @@ export async function updatePasscodeInCloud(newPasscode: string) {
         updatedAt: serverTimestamp(),
       });
     }
+    await waitForPendingWrites(db);
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
   }
@@ -1042,6 +1211,7 @@ export async function updateWorkspaceMemberEmailsInCloud(nextEmails: string[]) {
     }
 
     await commitBatchedWrites(ops);
+    await waitForPendingWrites(db);
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, wsPath);
   }
@@ -1115,6 +1285,134 @@ export async function resetCloudWorkspaceToSeed(memberEmails: string[]) {
     });
 
     await commitBatchedWrites(ops);
+    await waitForPendingWrites(db);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function syncCurrentStateToCloud(
+  snapshotData: WorkspaceSeedData,
+  memberEmails: string[]
+): Promise<{ totalSynced: number }> {
+  const ownerUid = getAuthUid();
+  const safeEmails = sanitizeMemberEmails(memberEmails, auth.currentUser?.email);
+  const path = `workspaces/${WORKSPACE_ID}`;
+  const normalizedEmail = (
+    auth.currentUser?.email || BOOTSTRAP_ADMIN_EMAIL
+  )
+    .toLowerCase()
+    .trim();
+
+  try {
+    const [adminsSnap, projectsSnap, designersSnap, movementsSnap, devicesSnap] =
+      await Promise.all([
+        getDocsFromServer(
+          query(
+            collection(db, 'workspaces', WORKSPACE_ID, 'admins'),
+            where('memberEmails', 'array-contains', normalizedEmail)
+          )
+        ),
+        getDocsFromServer(
+          query(
+            collection(db, 'workspaces', WORKSPACE_ID, 'projects'),
+            where('memberEmails', 'array-contains', normalizedEmail)
+          )
+        ),
+        getDocsFromServer(
+          query(
+            collection(db, 'workspaces', WORKSPACE_ID, 'designers'),
+            where('memberEmails', 'array-contains', normalizedEmail)
+          )
+        ),
+        getDocsFromServer(
+          query(
+            collection(db, 'workspaces', WORKSPACE_ID, 'movements'),
+            where('memberEmails', 'array-contains', normalizedEmail)
+          )
+        ),
+        getDocsFromServer(
+          query(
+            collection(db, 'workspaces', WORKSPACE_ID, 'devices'),
+            where('memberEmails', 'array-contains', normalizedEmail)
+          )
+        ),
+      ]);
+
+    const existingAdmins = new Set(adminsSnap.docs.map((d) => d.id));
+    const existingProjects = new Set(projectsSnap.docs.map((d) => d.id));
+    const existingDesigners = new Set(designersSnap.docs.map((d) => d.id));
+    const existingMovements = new Set(movementsSnap.docs.map((d) => d.id));
+    const existingDevices = new Set(devicesSnap.docs.map((d) => d.id));
+
+    const ops: Array<(batch: ReturnType<typeof writeBatch>) => void> = [];
+
+    snapshotData.admins.forEach((a) => {
+      const id = sanitizeId(a.id);
+      const ref = doc(db, 'workspaces', WORKSPACE_ID, 'admins', id);
+      if (existingAdmins.has(id)) {
+        ops.push((b) => b.update(ref, buildAdminUpdateFields(a)));
+      } else {
+        ops.push((b) => b.set(ref, buildAdminPayload(a, ownerUid, safeEmails, true)));
+      }
+    });
+
+    snapshotData.projects.forEach((p) => {
+      const id = sanitizeId(p.id);
+      const ref = doc(db, 'workspaces', WORKSPACE_ID, 'projects', id);
+      if (existingProjects.has(id)) {
+        ops.push((b) => b.update(ref, buildProjectUpdateFields(p)));
+      } else {
+        ops.push((b) => b.set(ref, buildProjectPayload(p, ownerUid, safeEmails, true)));
+      }
+    });
+
+    snapshotData.designers.forEach((d) => {
+      const id = sanitizeId(d.id);
+      const ref = doc(db, 'workspaces', WORKSPACE_ID, 'designers', id);
+      if (existingDesigners.has(id)) {
+        ops.push((b) => b.update(ref, buildDesignerUpdateFields(d)));
+      } else {
+        ops.push((b) => b.set(ref, buildDesignerPayload(d, ownerUid, safeEmails, true)));
+      }
+    });
+
+    snapshotData.movements.forEach((m) => {
+      const id = sanitizeId(m.id);
+      const ref = doc(db, 'workspaces', WORKSPACE_ID, 'movements', id);
+      if (existingMovements.has(id)) {
+        ops.push((b) => b.update(ref, buildMovementUpdateFields(m)));
+      } else {
+        ops.push((b) => b.set(ref, buildMovementPayload(m, ownerUid, safeEmails, true)));
+      }
+    });
+
+    snapshotData.devices.forEach((dev) => {
+      const id = sanitizeId(dev.id);
+      const ref = doc(db, 'workspaces', WORKSPACE_ID, 'devices', id);
+      if (existingDevices.has(id)) {
+        ops.push((b) => b.update(ref, buildDeviceUpdateFields(dev)));
+      } else {
+        ops.push((b) => b.set(ref, buildDevicePayload(dev, ownerUid, safeEmails, true)));
+      }
+    });
+
+    await commitBatchedWrites(ops);
+    await updatePasscodeInCloud(snapshotData.passcode);
+    await updateDoc(doc(db, 'workspaces', WORKSPACE_ID), {
+      seeded: true,
+      updatedAt: serverTimestamp(),
+    });
+    await waitForPendingWrites(db);
+
+    return {
+      totalSynced:
+        snapshotData.admins.length +
+        snapshotData.projects.length +
+        snapshotData.designers.length +
+        snapshotData.movements.length +
+        snapshotData.devices.length,
+    };
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }

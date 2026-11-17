@@ -20,6 +20,7 @@ import {
   updatePasscodeInCloud,
   updateWorkspaceMemberEmailsInCloud,
   resetCloudWorkspaceToSeed,
+  syncCurrentStateToCloud,
 } from './services/firestoreSync';
 import { Navbar } from './components/Navbar';
 import { StatsBar } from './components/StatsBar';
@@ -76,8 +77,23 @@ export default function App() {
   const [cloudStatus, setCloudStatus] = useState<'local' | 'connecting' | 'synced' | 'unauthorized'>('local');
   const [workspaceMeta, setWorkspaceMeta] = useState<WorkspaceMetadata | null>(null);
   const [isTeamCloudModalOpen, setIsTeamCloudModalOpen] = useState(false);
-  const [isCloudBannerDismissed, setIsCloudBannerDismissed] = useState(false);
   const [cloudError, setCloudError] = useState<string | null>(null);
+
+  const notifyIfNotSynced = (actionLabel: string) => {
+    if (cloudStatus === 'local') {
+      setCloudError(
+        `Saved ${actionLabel} on this browser only — sign in with Google ("Sign in to Sync") to store permanently in Firestore and sync across devices.`
+      );
+    } else if (cloudStatus === 'connecting') {
+      setCloudError(
+        `Firestore is still connecting while saving ${actionLabel}. Wait 2 seconds and retry or use Live Cloud Sync -> Sync Screen to Cloud.`
+      );
+    } else if (cloudStatus === 'unauthorized') {
+      setCloudError(
+        `This Google account is not authorized to save ${actionLabel} to the shared Firestore workspace.`
+      );
+    }
+  };
 
   const runCloudWrite = (promise: Promise<unknown>, actionLabel: string) => {
     promise.catch((err) => {
@@ -106,6 +122,8 @@ export default function App() {
     localStorage.setItem(STORAGE_KEYS.PASSWORD, newPass);
     if (cloudStatus === 'synced') {
       runCloudWrite(updatePasscodeInCloud(newPass), 'passcode');
+    } else {
+      notifyIfNotSynced('passcode');
     }
   };
 
@@ -288,8 +306,24 @@ export default function App() {
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (err) {
+      const code = (err as { code?: string })?.code || '';
       const msg = err instanceof Error ? err.message : 'Google sign-in failed.';
-      if (!msg.includes('popup-closed-by-user')) {
+      if (code === 'auth/popup-closed-by-user' || msg.includes('popup-closed-by-user')) {
+        return;
+      }
+      if (code === 'auth/popup-blocked' || msg.includes('popup-blocked')) {
+        setCloudError(
+          'Your browser blocked the Google Sign-In popup. Please allow popups for this site and click "Sign in with Google" again.'
+        );
+      } else if (code === 'auth/unauthorized-domain') {
+        setCloudError(
+          'This domain is not authorized for Google Sign-In in Firebase Authentication. Add this domain under Firebase Console -> Authentication -> Settings -> Authorized domains.'
+        );
+      } else if (code === 'auth/network-request-failed') {
+        setCloudError(
+          'Network error during Google Sign-In. Check your internet connection and retry.'
+        );
+      } else {
         setCloudError(msg);
       }
     }
@@ -303,6 +337,10 @@ export default function App() {
 
   const handleUpdateMemberEmails = async (nextEmails: string[]) => {
     await updateWorkspaceMemberEmailsInCloud(nextEmails);
+  };
+
+  const handlePushCurrentStateToCloud = async () => {
+    return syncCurrentStateToCloud(latestSeedRef.current, activeMemberEmails);
   };
 
   const activeMemberEmails =
@@ -406,6 +444,8 @@ export default function App() {
         saveAdminToCloud(targetAdmin, isNew, activeMemberEmails),
         'admin'
       );
+    } else {
+      notifyIfNotSynced('admin');
     }
   };
 
@@ -429,6 +469,8 @@ export default function App() {
               deleteAdminAndProjectsFromCloud(adminId, projectIdsToDelete),
               'admin deletion'
             );
+          } else {
+            notifyIfNotSynced('admin deletion');
           }
         },
       });
@@ -476,6 +518,8 @@ export default function App() {
         saveProjectToCloud(targetProject, isNew, activeMemberEmails),
         'project'
       );
+    } else {
+      notifyIfNotSynced('project');
     }
   };
 
@@ -509,6 +553,8 @@ export default function App() {
               deleteProjectAndMovementsFromCloud(projectId, linkedMovementIds),
               'project deletion'
             );
+          } else {
+            notifyIfNotSynced('project deletion');
           }
         },
       });
@@ -517,14 +563,17 @@ export default function App() {
 
   const handleQuickStatusChange = (projectId: string, status: ProjectStatus) => {
     requireAdminAuth(() => {
+      const targetProject = projects.find((p) => p.id === projectId);
       setProjects((prev) =>
         prev.map((p) => (p.id === projectId ? { ...p, status } : p))
       );
       if (cloudStatus === 'synced') {
         runCloudWrite(
-          updateProjectStatusInCloud(projectId, status),
+          updateProjectStatusInCloud(projectId, status, targetProject, activeMemberEmails),
           'project status'
         );
+      } else {
+        notifyIfNotSynced('project status');
       }
     });
   };
@@ -568,6 +617,8 @@ export default function App() {
         saveDesignerToCloud(targetDesigner, isNew, activeMemberEmails),
         'designer'
       );
+    } else {
+      notifyIfNotSynced('designer');
     }
   };
 
@@ -587,6 +638,8 @@ export default function App() {
               deleteDesignerFromCloud(designerId),
               'designer deletion'
             );
+          } else {
+            notifyIfNotSynced('designer deletion');
           }
         },
       });
@@ -638,6 +691,8 @@ export default function App() {
         saveMovementToCloud(targetMovement, isNew, activeMemberEmails),
         'client movement'
       );
+    } else {
+      notifyIfNotSynced('client movement');
     }
   };
 
@@ -656,6 +711,8 @@ export default function App() {
               deleteMovementFromCloud(movementId),
               'client movement deletion'
             );
+          } else {
+            notifyIfNotSynced('client movement deletion');
           }
         },
       });
@@ -706,6 +763,8 @@ export default function App() {
         saveDeviceToCloud(targetDevice, isNew, activeMemberEmails),
         'device allocation'
       );
+    } else {
+      notifyIfNotSynced('device allocation');
     }
   };
 
@@ -725,6 +784,8 @@ export default function App() {
               deleteDeviceFromCloud(deviceId),
               'device deletion'
             );
+          } else {
+            notifyIfNotSynced('device deletion');
           }
         },
       });
@@ -754,6 +815,8 @@ export default function App() {
               resetCloudWorkspaceToSeed(activeMemberEmails),
               'workspace reset'
             );
+          } else {
+            notifyIfNotSynced('workspace reset');
           }
         },
       });
@@ -812,7 +875,7 @@ export default function App() {
           </div>
         )}
 
-        {authReady && cloudStatus === 'local' && !isCloudBannerDismissed && (
+        {authReady && cloudStatus === 'local' && (
           <div className="mb-5 p-3.5 rounded-2xl bg-orange-50/90 border border-orange-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-start sm:items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-white border border-orange-200 flex items-center justify-center text-orange-600 shrink-0 shadow-xs">
@@ -820,10 +883,10 @@ export default function App() {
               </div>
               <div>
                 <p className="text-xs font-black text-black">
-                  Enable Multi-Device &amp; Real-Time Team Sync with Firebase
+                  Local Preview Only — Sign in with Google to Save &amp; Sync Across Devices
                 </p>
                 <p className="text-[11px] font-medium text-zinc-700">
-                  Sign in with Google so every edit you or your team makes updates live across all devices and shared links.
+                  Changes made before signing in are stored only in this browser. Sign in with Google ({BOOTSTRAP_ADMIN_EMAIL} or an authorized email) to save permanently to Firestore and see live updates on every device.
                 </p>
               </div>
             </div>
@@ -843,13 +906,6 @@ export default function App() {
               >
                 <Share2 className="w-3.5 h-3.5" />
                 <span>Steps</span>
-              </button>
-              <button
-                onClick={() => setIsCloudBannerDismissed(true)}
-                title="Dismiss banner"
-                className="p-1.5 text-zinc-500 hover:text-black rounded-lg hover:bg-orange-100 transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -1205,6 +1261,7 @@ export default function App() {
         onGoogleSignIn={handleGoogleSignIn}
         onGoogleSignOut={handleGoogleSignOut}
         onUpdateMemberEmails={handleUpdateMemberEmails}
+        onPushCurrentStateToCloud={handlePushCurrentStateToCloud}
       />
     </div>
   );

@@ -125,11 +125,11 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 id="connect-firebase-nav-btn"
                 onClick={onGoogleSignIn}
-                title="Sign in with Google to save and sync data live across devices"
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-xl transition-colors cursor-pointer"
+                title="Not synced to Firestore yet — sign in with Google to save and sync live across devices"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-orange-800 bg-orange-50 hover:bg-orange-100 border border-orange-300 rounded-xl transition-colors cursor-pointer"
               >
                 <Cloud className="w-3.5 h-3.5 text-orange-600" />
-                <span>Connect Firebase</span>
+                <span>Sign in to Sync</span>
               </button>
             ) : cloudStatus === 'synced' ? (
               <button
