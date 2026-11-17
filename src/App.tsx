@@ -79,11 +79,33 @@ export default function App() {
   const [isCloudBannerDismissed, setIsCloudBannerDismissed] = useState(false);
   const [cloudError, setCloudError] = useState<string | null>(null);
 
+  const runCloudWrite = (promise: Promise<unknown>, actionLabel: string) => {
+    promise.catch((err) => {
+      console.error(`Firebase ${actionLabel} error:`, err);
+      let msg = err instanceof Error ? err.message : String(err);
+      try {
+        const parsed = JSON.parse(msg);
+        if (parsed && typeof parsed.error === 'string') {
+          msg = parsed.error;
+        }
+      } catch {
+        // use raw message
+      }
+      if (msg.includes('Quota exceeded')) {
+        setCloudError(
+          `Firestore daily free-tier quota exceeded while ${actionLabel}. Quota resets tomorrow.`
+        );
+      } else {
+        setCloudError(`Failed to sync ${actionLabel} to Firebase: ${msg}`);
+      }
+    });
+  };
+
   const handleChangePassword = (newPass: string) => {
     setAdminPassword(newPass);
     localStorage.setItem(STORAGE_KEYS.PASSWORD, newPass);
     if (cloudStatus === 'synced') {
-      void updatePasscodeInCloud(newPass);
+      runCloudWrite(updatePasscodeInCloud(newPass), 'passcode');
     }
   };
 
@@ -380,7 +402,10 @@ export default function App() {
       setAdmins((prev) => [...prev, targetAdmin]);
     }
     if (cloudStatus === 'synced') {
-      void saveAdminToCloud(targetAdmin, isNew, activeMemberEmails);
+      runCloudWrite(
+        saveAdminToCloud(targetAdmin, isNew, activeMemberEmails),
+        'admin'
+      );
     }
   };
 
@@ -400,7 +425,10 @@ export default function App() {
           setAdmins((prev) => prev.filter((a) => a.id !== adminId));
           setProjects((prev) => prev.filter((p) => p.adminId !== adminId));
           if (cloudStatus === 'synced') {
-            void deleteAdminAndProjectsFromCloud(adminId, projectIdsToDelete);
+            runCloudWrite(
+              deleteAdminAndProjectsFromCloud(adminId, projectIdsToDelete),
+              'admin deletion'
+            );
           }
         },
       });
@@ -444,7 +472,10 @@ export default function App() {
       setProjects((prev) => [targetProject, ...prev]);
     }
     if (cloudStatus === 'synced') {
-      void saveProjectToCloud(targetProject, isNew, activeMemberEmails);
+      runCloudWrite(
+        saveProjectToCloud(targetProject, isNew, activeMemberEmails),
+        'project'
+      );
     }
   };
 
@@ -474,7 +505,10 @@ export default function App() {
             return updated;
           });
           if (cloudStatus === 'synced') {
-            void deleteProjectAndMovementsFromCloud(projectId, linkedMovementIds);
+            runCloudWrite(
+              deleteProjectAndMovementsFromCloud(projectId, linkedMovementIds),
+              'project deletion'
+            );
           }
         },
       });
@@ -487,7 +521,10 @@ export default function App() {
         prev.map((p) => (p.id === projectId ? { ...p, status } : p))
       );
       if (cloudStatus === 'synced') {
-        void updateProjectStatusInCloud(projectId, status);
+        runCloudWrite(
+          updateProjectStatusInCloud(projectId, status),
+          'project status'
+        );
       }
     });
   };
@@ -527,7 +564,10 @@ export default function App() {
       setDesigners((prev) => [...prev, targetDesigner]);
     }
     if (cloudStatus === 'synced') {
-      void saveDesignerToCloud(targetDesigner, isNew, activeMemberEmails);
+      runCloudWrite(
+        saveDesignerToCloud(targetDesigner, isNew, activeMemberEmails),
+        'designer'
+      );
     }
   };
 
@@ -543,7 +583,10 @@ export default function App() {
         onConfirm: () => {
           setDesigners((prev) => prev.filter((d) => d.id !== designerId));
           if (cloudStatus === 'synced') {
-            void deleteDesignerFromCloud(designerId);
+            runCloudWrite(
+              deleteDesignerFromCloud(designerId),
+              'designer deletion'
+            );
           }
         },
       });
@@ -591,7 +634,10 @@ export default function App() {
       setMovements((prev) => [targetMovement, ...prev]);
     }
     if (cloudStatus === 'synced') {
-      void saveMovementToCloud(targetMovement, isNew, activeMemberEmails);
+      runCloudWrite(
+        saveMovementToCloud(targetMovement, isNew, activeMemberEmails),
+        'client movement'
+      );
     }
   };
 
@@ -606,7 +652,10 @@ export default function App() {
         onConfirm: () => {
           setMovements((prev) => prev.filter((m) => m.id !== movementId));
           if (cloudStatus === 'synced') {
-            void deleteMovementFromCloud(movementId);
+            runCloudWrite(
+              deleteMovementFromCloud(movementId),
+              'client movement deletion'
+            );
           }
         },
       });
@@ -653,7 +702,10 @@ export default function App() {
       setDevices((prev) => [targetDevice, ...prev]);
     }
     if (cloudStatus === 'synced') {
-      void saveDeviceToCloud(targetDevice, isNew, activeMemberEmails);
+      runCloudWrite(
+        saveDeviceToCloud(targetDevice, isNew, activeMemberEmails),
+        'device allocation'
+      );
     }
   };
 
@@ -669,7 +721,10 @@ export default function App() {
         onConfirm: () => {
           setDevices((prev) => prev.filter((d) => d.id !== deviceId));
           if (cloudStatus === 'synced') {
-            void deleteDeviceFromCloud(deviceId);
+            runCloudWrite(
+              deleteDeviceFromCloud(deviceId),
+              'device deletion'
+            );
           }
         },
       });
@@ -695,7 +750,10 @@ export default function App() {
           localStorage.removeItem(STORAGE_KEYS.MOVEMENTS);
           localStorage.removeItem(STORAGE_KEYS.DEVICES);
           if (cloudStatus === 'synced') {
-            void resetCloudWorkspaceToSeed(activeMemberEmails);
+            runCloudWrite(
+              resetCloudWorkspaceToSeed(activeMemberEmails),
+              'workspace reset'
+            );
           }
         },
       });

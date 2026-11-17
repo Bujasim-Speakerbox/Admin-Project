@@ -4,7 +4,9 @@ import {
   deleteField,
   doc,
   getDoc,
+  getDocFromServer,
   getDocs,
+  getDocsFromServer,
   onSnapshot,
   query,
   serverTimestamp,
@@ -16,6 +18,7 @@ import {
   Unsubscribe,
 } from 'firebase/firestore';
 import { User } from 'firebase/auth';
+import firebaseConfig from '../../firebase-applet-config.json';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import {
   Admin,
@@ -1015,8 +1018,19 @@ export async function updateWorkspaceMemberEmailsInCloud(nextEmails: string[]) {
     const subcollections = ['admins', 'projects', 'designers', 'movements', 'devices'];
     const ops: Array<(batch: ReturnType<typeof writeBatch>) => void> = [];
 
+    const normalizedEmail = (
+      auth.currentUser?.email || BOOTSTRAP_ADMIN_EMAIL
+    )
+      .toLowerCase()
+      .trim();
+
     for (const sub of subcollections) {
-      const snap = await getDocs(collection(db, 'workspaces', WORKSPACE_ID, sub));
+      const snap = await getDocs(
+        query(
+          collection(db, 'workspaces', WORKSPACE_ID, sub),
+          where('memberEmails', 'array-contains', normalizedEmail)
+        )
+      );
       snap.docs.forEach((d) => {
         ops.push((b) =>
           b.update(d.ref, {
@@ -1038,12 +1052,22 @@ export async function resetCloudWorkspaceToSeed(memberEmails: string[]) {
   const safeEmails = sanitizeMemberEmails(memberEmails, auth.currentUser?.email);
   const subcollections = ['admins', 'projects', 'designers', 'movements', 'devices'];
   const path = `workspaces/${WORKSPACE_ID}`;
+  const normalizedEmail = (
+    auth.currentUser?.email || BOOTSTRAP_ADMIN_EMAIL
+  )
+    .toLowerCase()
+    .trim();
 
   try {
     const ops: Array<(batch: ReturnType<typeof writeBatch>) => void> = [];
 
     for (const sub of subcollections) {
-      const snap = await getDocs(collection(db, 'workspaces', WORKSPACE_ID, sub));
+      const snap = await getDocs(
+        query(
+          collection(db, 'workspaces', WORKSPACE_ID, sub),
+          where('memberEmails', 'array-contains', normalizedEmail)
+        )
+      );
       snap.docs.forEach((d) => {
         ops.push((b) => b.delete(d.ref));
       });
@@ -1093,5 +1117,102 @@ export async function resetCloudWorkspaceToSeed(memberEmails: string[]) {
     await commitBatchedWrites(ops);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export interface FirestoreVerificationResult {
+  projectId: string;
+  databaseId: string;
+  latencyMs: number;
+  writeVerified: boolean;
+  counts: {
+    admins: number;
+    projects: number;
+    designers: number;
+    movements: number;
+    devices: number;
+  };
+}
+
+export async function verifyFirestoreWorkspaceRoundTrip(): Promise<FirestoreVerificationResult> {
+  const user = auth.currentUser;
+  if (!user || !user.email) {
+    throw new Error('Sign in with Google first to verify live Firestore read/write.');
+  }
+
+  const startedAt = Date.now();
+  const normalizedEmail = user.email.toLowerCase().trim();
+  const wsRef = doc(db, 'workspaces', WORKSPACE_ID);
+  const wsPath = `workspaces/${WORKSPACE_ID}`;
+
+  try {
+    const wsSnap = await getDocFromServer(wsRef);
+    let writeVerified = false;
+
+    if (wsSnap.exists()) {
+      const data = wsSnap.data() as WorkspaceMetadata;
+      const isOwner =
+        normalizedEmail === BOOTSTRAP_ADMIN_EMAIL.toLowerCase() ||
+        data.ownerUid === user.uid;
+
+      if (isOwner) {
+        await updateDoc(wsRef, {
+          seeded: true,
+          updatedAt: serverTimestamp(),
+        });
+        await getDocFromServer(wsRef);
+        writeVerified = true;
+      }
+    }
+
+    const [adminsSnap, projectsSnap, designersSnap, movementsSnap, devicesSnap] =
+      await Promise.all([
+        getDocsFromServer(
+          query(
+            collection(db, 'workspaces', WORKSPACE_ID, 'admins'),
+            where('memberEmails', 'array-contains', normalizedEmail)
+          )
+        ),
+        getDocsFromServer(
+          query(
+            collection(db, 'workspaces', WORKSPACE_ID, 'projects'),
+            where('memberEmails', 'array-contains', normalizedEmail)
+          )
+        ),
+        getDocsFromServer(
+          query(
+            collection(db, 'workspaces', WORKSPACE_ID, 'designers'),
+            where('memberEmails', 'array-contains', normalizedEmail)
+          )
+        ),
+        getDocsFromServer(
+          query(
+            collection(db, 'workspaces', WORKSPACE_ID, 'movements'),
+            where('memberEmails', 'array-contains', normalizedEmail)
+          )
+        ),
+        getDocsFromServer(
+          query(
+            collection(db, 'workspaces', WORKSPACE_ID, 'devices'),
+            where('memberEmails', 'array-contains', normalizedEmail)
+          )
+        ),
+      ]);
+
+    return {
+      projectId: firebaseConfig.projectId,
+      databaseId: firebaseConfig.firestoreDatabaseId,
+      latencyMs: Date.now() - startedAt,
+      writeVerified,
+      counts: {
+        admins: adminsSnap.size,
+        projects: projectsSnap.size,
+        designers: designersSnap.size,
+        movements: movementsSnap.size,
+        devices: devicesSnap.size,
+      },
+    };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, wsPath);
   }
 }

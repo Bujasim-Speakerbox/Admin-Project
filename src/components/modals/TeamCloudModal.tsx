@@ -15,9 +15,12 @@ import {
   Loader2,
   Smartphone,
   Link2,
+  Database,
 } from 'lucide-react';
 import {
   BOOTSTRAP_ADMIN_EMAIL,
+  FirestoreVerificationResult,
+  verifyFirestoreWorkspaceRoundTrip,
   WorkspaceMetadata,
 } from '../../services/firestoreSync';
 
@@ -50,8 +53,25 @@ export function TeamCloudModal({
   const [isSavingEmails, setIsSavingEmails] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verifyResult, setVerifyResult] = useState<FirestoreVerificationResult | null>(null);
 
   if (!isOpen) return null;
+
+  const handleVerifyConnection = async () => {
+    setIsVerifying(true);
+    setErrorMsg('');
+    try {
+      const res = await verifyFirestoreWorkspaceRoundTrip();
+      setVerifyResult(res);
+    } catch (err) {
+      setErrorMsg(
+        err instanceof Error ? err.message : 'Failed to verify Firestore connection.'
+      );
+    } finally {
+      setIsVerifying(false);
+    }
+  };
 
   const userEmail = (firebaseUser?.email || '').toLowerCase().trim();
   const isOwner =
@@ -397,6 +417,49 @@ export function TeamCloudModal({
                     </div>
                   );
                 })}
+              </div>
+
+              {/* Firestore Read/Write Verification */}
+              <div className="pt-3 border-t border-zinc-200 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <Database className="w-4 h-4 text-orange-600" />
+                    <span className="text-xs font-bold text-black uppercase tracking-wider">
+                      Firestore Connection Check
+                    </span>
+                  </div>
+                  <button
+                    id="verify-firestore-btn"
+                    type="button"
+                    disabled={isVerifying}
+                    onClick={handleVerifyConnection}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-xl transition-colors cursor-pointer disabled:opacity-60"
+                  >
+                    {isVerifying ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                    )}
+                    <span>{isVerifying ? 'Verifying...' : 'Verify Live Save & Load'}</span>
+                  </button>
+                </div>
+
+                {verifyResult && (
+                  <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-900 space-y-1">
+                    <p className="font-bold flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>
+                        Connected &amp; Verified ({verifyResult.latencyMs} ms
+                        {verifyResult.writeVerified ? ' • Server Read & Write OK' : ' • Server Read OK'})
+                      </span>
+                    </p>
+                    <p className="text-emerald-800">
+                      Synced Records: {verifyResult.counts.admins} Admins, {verifyResult.counts.projects} Projects,{' '}
+                      {verifyResult.counts.designers} Designers, {verifyResult.counts.movements} Movements,{' '}
+                      {verifyResult.counts.devices} Devices
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}
