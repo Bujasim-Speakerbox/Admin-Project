@@ -19,8 +19,13 @@ import {
   Unsubscribe,
 } from 'firebase/firestore';
 import { User } from 'firebase/auth';
-import firebaseConfig from '../../firebase-applet-config.json';
-import { auth, db, handleFirestoreError, OperationType } from '../firebase';
+import {
+  auth,
+  db,
+  handleFirestoreError,
+  OperationType,
+  resolvedFirebaseConfig,
+} from '../firebase';
 import {
   Admin,
   BillingCycle,
@@ -1498,8 +1503,8 @@ export async function verifyFirestoreWorkspaceRoundTrip(): Promise<FirestoreVeri
       ]);
 
     return {
-      projectId: firebaseConfig.projectId,
-      databaseId: firebaseConfig.firestoreDatabaseId,
+      projectId: resolvedFirebaseConfig.projectId,
+      databaseId: resolvedFirebaseConfig.firestoreDatabaseId,
       latencyMs: Date.now() - startedAt,
       writeVerified,
       counts: {
